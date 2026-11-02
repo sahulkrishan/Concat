@@ -799,7 +799,7 @@ export component App inherits Window {
         y: 0;
         width: root.width;
         height: root.height;
-        phone: root.phone;
+        phone: root.sheets-fill;
         inset-top: root.safe-area-insets.top;
         inset-bottom: root.safe-area-insets.bottom;
         inset-left: root.safe-area-insets.left;
@@ -1101,6 +1101,10 @@ export component App inherits Window {
         inset-bottom: root.safe-area-insets.bottom;
         inset-left: root.safe-area-insets.left;
         inset-right: root.safe-area-insets.right;
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
         data: root.relink;
         relink-all => { root.relink-all(); }
         dismiss => { root.relink-dismiss(); }

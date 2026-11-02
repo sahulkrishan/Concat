@@ -1262,8 +1262,8 @@ export component PhoneEditor inherits Rectangle {
         width: root.is-landscape ? root.right-w : root.width;
         height: root.height;
         side-panel: root.is-landscape;
-        surface-x: root.is-landscape ? root.split-x : 0px;
-        surface-y: root.is-landscape ? root.top-h : (root.height - self.sheet-height + self.drag);
+        surface-x: 0px;
+        surface-y: root.is-landscape ? (root.top-h + self.drag) : (root.height - self.sheet-height + self.drag);
         surface-width: root.is-landscape ? root.right-w : root.width;
         sheet-height: root.sheet-h;
         open: root.sheet != "";
@@ -1721,7 +1721,7 @@ export component PhoneEditor inherits Rectangle {
     // down the picks are; it follows the sheet when the sheet is dragged.
     if root.sheet == "media" && Editor.media-selected-count > 0: Rectangle {
         x: root.is-landscape ? root.split-x : 0;
-        y: root.height - root.add-bar-h + (root.is-landscape ? 0px : sheet.drag);
+        y: root.height - root.add-bar-h + sheet.drag;
         width: root.is-landscape ? root.right-w : root.width;
         height: root.add-bar-h;
         background: Theme.panel;
