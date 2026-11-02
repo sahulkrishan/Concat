@@ -1677,6 +1677,7 @@ export component PhoneEditor inherits Rectangle {
             commit => { Editor.clip-commit(); }
             import-font => { Editor.import-font(); }
             set-default => { Editor.text-style-default(); }
+            apply-to-layer => { Editor.apply-style-to-layer(); }
         }
 
         if root.sheet == "clip-layer": FilterPanel {

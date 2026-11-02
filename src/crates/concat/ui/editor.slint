@@ -169,6 +169,7 @@ export global Editor {
     callback clip-reset-words();
     callback clip-set-colour(field: ClipTextField, value: color);
     callback clip-commit();
+    callback apply-style-to-layer();
     /// The families a title can be set in: the bundled face, the user's
     /// own fonts, then the machine's. See `Studio::font_families`.
     in-out property <[string]> font-families;
@@ -486,6 +487,8 @@ export global Editor {
     callback track-flag-changed(index: int, visible: bool, muted: bool, locked: bool);
     callback track-sized(index: int, size: TrackSize);
     callback track-removed(index: int);
+    callback track-selected(index: int, additive: bool);
+    callback track-clear-clips(index: int);
     /// A tab dragged to a new place in the strip. `to` is counted with the
     /// tab already out of its old slot, the way MoveTimeline counts.
     callback tab-moved(from: int, to: int);

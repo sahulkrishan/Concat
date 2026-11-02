@@ -134,6 +134,8 @@ component MoreMenu inherits Rectangle {
     in property <bool> removable;
 
     callback removed();
+    callback select-all();
+    callback clear-clips();
 
     width: 26px;
     min-height: 26px;
@@ -149,12 +151,10 @@ component MoreMenu inherits Rectangle {
     }
 
     list := PopupWindow {
-        // Hung from the button's trailing edge: it is the last control in
-        // the row, and a list opening rightwards would open over the lanes.
         x: 26px - self.width;
         y: 26px;
-        width: 140px;
-        height: root.row-h + 8px;
+        width: 175px;
+        height: 3 * root.row-h + 12px;
         close-policy: close-on-click-outside;
 
         Rectangle {
@@ -167,6 +167,81 @@ component MoreMenu inherits Rectangle {
             VerticalLayout {
                 padding: 4px;
                 alignment: start;
+                spacing: 2px;
+
+                Rectangle {
+                    height: root.row-h;
+                    border-radius: Theme.r-sm;
+                    background: select-btn.has-hover ? Theme.field-hover : Colors.transparent;
+
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        spacing: 8px;
+
+                        VerticalLayout {
+                            alignment: center;
+                            Icon {
+                                glyph: Glyph.rows;
+                                size: 13px;
+                                tint: Theme.fg;
+                            }
+                        }
+
+                        Text {
+                            horizontal-stretch: 1;
+                            text: I18n.t("trackHeader.selectAllClips");
+                            color: Theme.fg;
+                            font-size: Theme.fs;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    select-btn := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            list.close();
+                            root.select-all();
+                        }
+                    }
+                }
+
+                Rectangle {
+                    height: root.row-h;
+                    border-radius: Theme.r-sm;
+                    background: clear-btn.has-hover ? Theme.field-hover : Colors.transparent;
+
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        spacing: 8px;
+
+                        VerticalLayout {
+                            alignment: center;
+                            Icon {
+                                glyph: Glyph.trash;
+                                size: 13px;
+                                tint: clear-btn.has-hover ? Theme.danger : Theme.fg;
+                            }
+                        }
+
+                        Text {
+                            horizontal-stretch: 1;
+                            text: I18n.t("trackHeader.clearClips");
+                            color: clear-btn.has-hover ? Theme.danger : Theme.fg;
+                            font-size: Theme.fs;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    clear-btn := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            list.close();
+                            root.clear-clips();
+                        }
+                    }
+                }
 
                 Rectangle {
                     height: root.row-h;
@@ -219,6 +294,10 @@ component Header inherits Rectangle {
     callback flag-changed(visible: bool, muted: bool, locked: bool);
     callback sized(size: TrackSize);
     callback removed();
+    callback selected(additive: bool);
+    callback clear-clips();
+
+    background: root.track.selected ? Theme.field-active : (row.has-hover ? Theme.field-hover : Colors.transparent);
 
     Rectangle {
         x: 0;
@@ -229,6 +308,9 @@ component Header inherits Rectangle {
     }
 
     row := TouchArea {
+        clicked => {
+            root.selected(false);
+        }
         HorizontalLayout {
             padding-left: 8px;
             padding-right: 4px;
@@ -311,6 +393,8 @@ component Header inherits Rectangle {
                 MoreMenu {
                     removable: root.removable;
                     removed => { root.removed(); }
+                    select-all => { root.selected(false); }
+                    clear-clips => { root.clear-clips(); }
                 }
             }
         }
@@ -335,6 +419,8 @@ export component TrackHeaders inherits Rectangle {
     callback flag-changed(index: int, visible: bool, muted: bool, locked: bool);
     callback sized(index: int, size: TrackSize);
     callback removed(index: int);
+    callback selected(index: int, additive: bool);
+    callback clear-clips(index: int);
 
     clip: true;
 
@@ -373,6 +459,8 @@ export component TrackHeaders inherits Rectangle {
             }
             sized(size) => { root.sized(index, size); }
             removed => { root.removed(index); }
+            selected(additive) => { root.selected(index, additive); }
+            clear-clips => { root.clear-clips(index); }
         }
 
         // The bar, over the rows and under the corner. On the trailing edge,
