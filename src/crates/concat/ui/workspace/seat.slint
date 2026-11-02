@@ -314,6 +314,7 @@ export component Seat inherits Rectangle {
             font-families: Editor.font-families;
             import-font => { Editor.import-font(); }
             text-style-default => { Editor.text-style-default(); }
+            apply-style-to-layer => { Editor.apply-style-to-layer(); }
         }
 
     // Declared before the views, so anything inside one of them that takes
@@ -473,6 +474,8 @@ export component Seat inherits Rectangle {
             }
             track-sized(index, size) => { Editor.track-sized(index, size); }
             track-removed(index) => { Editor.track-removed(index); }
+            track-selected(index, additive) => { Editor.track-selected(index, additive); }
+            track-clear-clips(index) => { Editor.track-clear-clips(index); }
         }
 
     // What says where the drop will land — and, on an edge, how much of the

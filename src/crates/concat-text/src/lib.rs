@@ -1668,15 +1668,20 @@ fn paint(
     // Where a line may run to. A sized box wraps at its own width. Without
     // one the words would be set on one line however long, and the canvas
     // is the frame: whatever ran past its edge was never drawn, so a long
-    // title lost its end. They wrap at the frame's edge instead - the
-    // whole width for a centred block, half of it for one anchored at the
-    // centre and growing one way - less the plate's air on either side.
+    // title lost its end. They wrap at the safe frame boundary - safe margin
+    // on both sides (at least 5% or 24px) for a centred block, half of it
+    // for one anchored at the centre and growing one way - less the plate's
+    // air on either side.
+    let safe_margin_x = ((width as f32 * 0.05).max(24.0)).min(width as f32 * 0.4);
+    let _safe_margin_y = ((frame_h * 0.05).max(24.0)).min(frame_h * 0.4);
+    let safe_w = (width as f32 - 2.0 * safe_margin_x).max(em);
+
     let wrap_w = if max_w > 0.0 {
         max_w
     } else {
         let room = match style.align {
-            Align::Center => width as f32,
-            Align::Left | Align::Right => width as f32 / 2.0,
+            Align::Center => safe_w,
+            Align::Left | Align::Right => (width as f32 / 2.0 - safe_margin_x).max(em),
         };
         (room - 2.0 * pad_x).max(em)
     };

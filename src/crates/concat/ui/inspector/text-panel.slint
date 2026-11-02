@@ -54,6 +54,8 @@ export component TextPanel inherits VerticalLayout {
     callback import-font();
     /// Keep this title's look for new titles and captions.
     callback set-default();
+    /// Apply this title's styling and position to all titles in this layer.
+    callback apply-to-layer();
 
     /// Several titles selected together: every knob writes to all of them
     /// and the words, each title's own, are not offered.
@@ -403,6 +405,16 @@ export component TextPanel inherits VerticalLayout {
                 label: I18n.t("textPanel.useForNewTitles");
                 ghost: true;
                 clicked => { root.set-default(); }
+            }
+        }
+
+        Row {
+            label: "";
+            label-width: root.label-w;
+            Button {
+                label: I18n.t("textPanel.applyToLayer");
+                ghost: true;
+                clicked => { root.apply-to-layer(); }
             }
         }
 
@@ -820,6 +832,16 @@ export component TextPanel inherits VerticalLayout {
             unit: "%";
             unit-scale: 100;
             changed(v) => { root.set(ClipField.offset-y, v); root.commit(); }
+        }
+
+        Row {
+            label: "";
+            label-width: root.label-w;
+            Button {
+                label: I18n.t("textPanel.applyToLayer");
+                ghost: true;
+                clicked => { root.apply-to-layer(); }
+            }
         }
         }
     }

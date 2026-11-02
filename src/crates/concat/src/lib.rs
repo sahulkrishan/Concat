@@ -920,6 +920,9 @@ fn start(project: Option<std::path::PathBuf>, smoke: bool) -> Result<(), slint::
     editor.on_text_style_default(on_window!(|state| {
         state.use_title_style_for_new();
     }));
+    editor.on_apply_style_to_layer(on_window!(|state| {
+        state.apply_style_to_selected_track();
+    }));
     editor.on_import_font(|| {
         Shell::with(|shell, _| {
             if shell.studio.borrow().session.is_none() {
@@ -1144,6 +1147,12 @@ fn start(project: Option<std::path::PathBuf>, smoke: bool) -> Result<(), slint::
     }));
     editor.on_track_removed(on_window!(|state, row: i32| {
         state.ask_remove_track(row);
+    }));
+    editor.on_track_selected(on_window!(|state, row: i32, additive: bool| {
+        state.select_lane(row, additive);
+    }));
+    editor.on_track_clear_clips(on_window!(|state, row: i32| {
+        state.clear_lane_clips(row);
     }));
 
     // ── the gestures ──

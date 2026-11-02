@@ -2815,6 +2815,73 @@ impl Studio {
             .is_some_and(|view| view.locked)
     }
 
+    pub fn is_track_selected(&self, track_id: &str) -> bool {
+        let mut count = 0;
+        let mut selected = 0;
+        for c in &self.timeline().clips {
+            if c.track_id == track_id {
+                count += 1;
+                if self.selection.contains(&c.id) {
+                    selected += 1;
+                }
+            }
+        }
+        count > 0 && count == selected
+    }
+
+    pub fn select_lane(&mut self, row: i32, additive: bool) {
+        let Some(track) = self.row_track(row).cloned() else {
+            return;
+        };
+        self.select_track(&track.id, additive);
+    }
+
+    pub fn select_track(&mut self, track_id: &str, additive: bool) {
+        if self.locked(track_id) {
+            return;
+        }
+        let track_clips: Vec<String> = self
+            .timeline()
+            .clips
+            .iter()
+            .filter(|c| c.track_id == track_id)
+            .map(|c| c.id.clone())
+            .collect();
+
+        self.transition_selected = None;
+        if !additive {
+            self.selection.clear();
+        }
+        for id in track_clips {
+            if !self.selection.contains(&id) {
+                self.selection.push(id);
+            }
+        }
+    }
+
+    pub fn clear_lane_clips(&mut self, row: i32) {
+        let Some(track) = self.row_track(row).cloned() else {
+            return;
+        };
+        if self.locked(&track.id) {
+            return;
+        }
+        let doomed: Vec<String> = self
+            .timeline()
+            .clips
+            .iter()
+            .filter(|c| c.track_id == track.id)
+            .map(|c| c.id.clone())
+            .collect();
+        if !doomed.is_empty() {
+            self.selection.retain(|id| !doomed.contains(id));
+            self.apply(Command::RemoveClips {
+                clip_ids: doomed,
+                ripple: false,
+            });
+        }
+    }
+
     fn lane_size(&self, track_id: &str) -> TrackSize {
         self.lanes
             .lane_view
@@ -5733,6 +5800,17 @@ impl Studio {
         if batch_volume {
             ids = self.volume_targets();
         }
+        if ids.is_empty() && (field == ClipField::Opacity || field == ClipField::TextOpacity) {
+            ids = self
+                .selection
+                .iter()
+                .filter(|id| {
+                    self.clip(id)
+                        .is_some_and(|clip| !self.locked(&clip.track_id) && clip.kind != model::ClipKind::Audio)
+                })
+                .cloned()
+                .collect();
+        }
         if ids.is_empty() {
             return;
         }
@@ -5834,7 +5912,10 @@ impl Studio {
                     at,
                 ),
                 ClipField::Opacity => {
-                    write_keyable(clip, model::KeyProperty::Opacity, value.clamp(0.0, 1.0), at)
+                    write_keyable(clip, model::KeyProperty::Opacity, value.clamp(0.0, 1.0), at);
+                    if let Some(text) = clip.text.as_mut() {
+                        text.opacity = value.clamp(0.0, 1.0);
+                    }
                 }
                 ClipField::CutoutFeather => {
                     clip.cutout.get_or_insert_with(model::Cutout::auto).feather =
@@ -6335,6 +6416,72 @@ impl Studio {
         self.notify(&t("textPanel.newTitlesUseThisStyle"), false);
     }
 
+    /// Apply the selected title's style, position, scale and opacity to all
+    /// text clips on the same layer/track, preserving each title's own words.
+    pub fn apply_style_to_selected_track(&mut self) {
+        self.flush_commit();
+        let source_id = self.sole_selection().or_else(|| self.selection.first().cloned());
+        let Some(source_id) = source_id else {
+            return;
+        };
+        let Some(clip) = self.clip(&source_id).cloned() else {
+            return;
+        };
+        self.apply_style_to_track(&clip.track_id, &source_id);
+    }
+
+    pub fn apply_style_to_track(&mut self, track_id: &str, source_clip_id: &str) {
+        let Some(source) = self.clip(source_clip_id).cloned() else {
+            return;
+        };
+        let Some(source_text) = source.text.as_ref() else {
+            return;
+        };
+        let target_ids: Vec<String> = self
+            .timeline()
+            .clips
+            .iter()
+            .filter(|c| c.track_id == track_id && c.id != source_clip_id && c.kind == model::ClipKind::Text)
+            .map(|c| c.id.clone())
+            .collect();
+
+        if target_ids.is_empty() {
+            return;
+        }
+
+        let mut commands = Vec::new();
+        for tid in target_ids {
+            let Some(target_clip) = self.clip(&tid) else {
+                continue;
+            };
+            let mut new_text = source_text.clone();
+            if let Some(target_text) = target_clip.text.as_ref() {
+                new_text.content = target_text.content.clone();
+                new_text.runs = target_text.runs.clone();
+            }
+            commands.push(Command::UpdateClip {
+                clip_id: tid.clone(),
+                patch: ClipPatch {
+                    text: Some(Some(new_text)),
+                    opacity: Some(source.opacity),
+                    ..Default::default()
+                },
+            });
+            commands.push(Command::SetClipTransform {
+                clip_id: tid,
+                scale: Some(source.scale),
+                offset_x: Some(source.offset_x),
+                offset_y: Some(source.offset_y),
+                rotation: Some(source.rotation),
+                stretch_x: None,
+                stretch_y: None,
+            });
+        }
+        if !commands.is_empty() {
+            self.apply(Command::Batch { commands });
+        }
+    }
+
     /// The inspector's gesture is over: what differs between the echo and
     /// the session becomes commands, as one batch.
     /// An inspector control changed something on the echo and wants it
@@ -6697,11 +6844,10 @@ impl Studio {
             return;
         }
         let origins: Vec<StageOrigin> = self
-            .stage_clips()
-            .into_iter()
-            .filter(|clip| {
-                self.selection.iter().any(|held| held == &clip.id) && !self.locked(&clip.track_id)
-            })
+            .selection
+            .iter()
+            .filter_map(|held| self.clip(held))
+            .filter(|clip| !self.locked(&clip.track_id) && clip.kind != model::ClipKind::Audio)
             .map(|clip| {
                 // A keyed clip is dragged from where its ride has it at
                 // the playhead, not from a constant nothing shows.
@@ -9969,6 +10115,7 @@ impl Studio {
                         visible: lane.visible,
                         muted: lane.muted,
                         locked: self.locked(&lane.id),
+                        selected: self.is_track_selected(&lane.id),
                         size: self.lane_size(&lane.id),
                         height,
                         top,
@@ -12452,6 +12599,23 @@ impl Studio {
         ));
         rows.push(check("lock", &t("studio.lockTrack"), "", locked, true));
         rows.push(rule());
+        rows.push(action(
+            "select-layer",
+            t("studio.selectLayer"),
+            Glyph::Rows,
+            "",
+            !locked,
+        ));
+        if clip.kind == model::ClipKind::Text {
+            rows.push(action(
+                "apply-style-layer",
+                t("studio.applyStyleToLayer"),
+                Glyph::TextMark,
+                "",
+                !locked,
+            ));
+        }
+        rows.push(rule());
         rows.push(MenuItemData {
             id: "delete".into(),
             label: t("common.delete").into(),
@@ -13155,6 +13319,8 @@ impl Studio {
             return;
         };
         match action {
+            "select-layer" => self.select_track(&clip.track_id, false),
+            "apply-style-layer" => self.apply_style_to_track(&clip.track_id, id),
             "copy" => self.copy_clips(Some(id)),
             "duplicate" => self.duplicate_selected(),
             // Pasted after the clip that was right-clicked, on its lane.

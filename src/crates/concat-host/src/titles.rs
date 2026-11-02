@@ -282,9 +282,43 @@ impl Titles {
                     // neutral base, as a media clip's do: the clip's own
                     // offset under keys put the title at the two added,
                     // away from the gizmo and often off the frame (#512).
+                    // Subtitles are kept within safe canvas borders so they
+                    // do not spill off the frame.
                     scale: export_base(clip, KeyProperty::Scale),
-                    offset_x: export_base(clip, KeyProperty::OffsetX),
-                    offset_y: export_base(clip, KeyProperty::OffsetY),
+                    offset_x: {
+                        let raw_ox = export_base(clip, KeyProperty::OffsetX);
+                        match painting {
+                            Painting::Title(text) => {
+                                let scale = export_base(clip, KeyProperty::Scale).max(0.001);
+                                let half_w = (art.block.0 as f64 * scale) / (2.0 * width as f64);
+                                let safe_mx = 0.05_f64.max(24.0 / width as f64).min(0.2);
+                                let max_ox = (0.5 - safe_mx - half_w).max(0.0);
+                                if text.max_width > 1.0 || half_w >= 0.5 {
+                                    raw_ox
+                                } else {
+                                    raw_ox.clamp(-max_ox, max_ox)
+                                }
+                            }
+                            Painting::Shape(_) => raw_ox,
+                        }
+                    },
+                    offset_y: {
+                        let raw_oy = export_base(clip, KeyProperty::OffsetY);
+                        match painting {
+                            Painting::Title(text) => {
+                                let scale = export_base(clip, KeyProperty::Scale).max(0.001);
+                                let half_h = (art.block.1 as f64 * scale) / (2.0 * height as f64);
+                                let safe_my = 0.05_f64.max(24.0 / height as f64).min(0.2);
+                                let max_oy = (0.5 - safe_my - half_h).max(0.0);
+                                if text.max_height > 1.0 || half_h >= 0.5 {
+                                    raw_oy
+                                } else {
+                                    raw_oy.clamp(-max_oy, max_oy)
+                                }
+                            }
+                            Painting::Shape(_) => raw_oy,
+                        }
+                    },
                     rotation: export_base(clip, KeyProperty::Rotation),
                     // A title is never pulled along an axis: its box is
                     // sized by the style, and its glyphs keep their shape.
@@ -1099,5 +1133,46 @@ mod tests {
             Path::new(&out[0].clip.path).is_file(),
             "painted to disk like a title"
         );
+    }
+
+    /// Subtitles with high offsets stay within safe frame boundaries so they never spill off-canvas.
+    #[test]
+    fn subtitles_stay_within_canvas_borders() {
+        let dirs = scratch("subtitle_bounds");
+        let mut editor = Editor::new();
+        let id = editor
+            .apply(Command::AddTextClip {
+                above: false,
+                track_id: None,
+                start: 0.0,
+                style: Some(concat_project::model::TextStyle {
+                    content: "Bottom caption that would otherwise overflow the frame border".to_owned(),
+                    ..Default::default()
+                }),
+                duration: Some(3.0),
+                offset_y: None,
+            })
+            .expect("added")
+            .created_id
+            .expect("id");
+        editor
+            .apply(Command::SetClipTransform {
+                clip_id: id.clone(),
+                scale: None,
+                offset_x: Some(0.48),
+                offset_y: Some(0.48),
+                rotation: None,
+                stretch_x: None,
+                stretch_y: None,
+            })
+            .expect("transform set");
+
+        let out = Titles::new(&dirs).clips(editor.project(), 640, 360);
+        assert_eq!(out.len(), 1);
+        assert!(out[0].clip.offset_y < 0.48, "offset_y was clamped within canvas");
+        assert!(out[0].clip.offset_x < 0.48, "offset_x was clamped within canvas");
+        let half_h = (out[0].block.1 as f64) / (2.0 * 360.0);
+        assert!(out[0].clip.offset_y + half_h <= 0.46, "bottom edge inside safe border");
+        let _ = std::fs::remove_dir_all(dirs.data.parent().unwrap());
     }
 }
