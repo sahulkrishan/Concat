@@ -1608,6 +1608,7 @@ component WideHome inherits Rectangle {
     in property <bool> busy;
     in property <string> version;
     in property <bool> can-drop;
+    in property <bool> phone: false;
 
     callback compose();
     callback open();
@@ -1628,13 +1629,14 @@ component WideHome inherits Rectangle {
     property <length> aside-gap: 40px;
     property <length> main-w: root.aside ? root.content-w - root.aside-w - root.aside-gap
         : root.content-w;
+    property <bool> show-open: !root.phone;
     /// The drop tile, beside New and Open, where they still have room.
     property <bool> drop-tile: root.can-drop && root.main-w >= 940px;
     /// The create row shares its width by weight - New a third again as
     /// wide as the others - and not by what its words would like, so a
     /// longer line on one tile does not shoulder the others aside.
-    property <length> tile-unit: (root.main-w - (root.drop-tile ? 2 : 1) * 14px)
-        / (root.drop-tile ? 3.3 : 2.3);
+    property <length> tile-unit: (root.main-w - ((root.drop-tile ? 1 : 0) + (root.show-open ? 1 : 0)) * 14px)
+        / (1.3 + (root.show-open ? 1.0 : 0.0) + (root.drop-tile ? 1.0 : 0.0));
     property <bool> searchable: root.recents-total > 8;
 
     flick := Flickable {
@@ -1699,7 +1701,7 @@ component WideHome inherits Rectangle {
                         clicked => { root.compose(); }
                     }
 
-                    CreateTile {
+                    if root.show-open: CreateTile {
                         width: root.tile-unit;
                         glyph: Glyph.folder;
                         title: I18n.t("start.openProject");
@@ -1768,7 +1770,7 @@ component WideHome inherits Rectangle {
                 ProjectsGrid {
                     recents: root.recents;
                     enabled: !root.busy;
-                    can-reveal: true;
+                    can-reveal: !root.phone;
                     opened(path) => { root.open-recent(path); }
                     forgotten(path) => { root.forget-recent(path); }
                     revealed(path) => { root.reveal-recent(path); }
@@ -1785,7 +1787,7 @@ component WideHome inherits Rectangle {
                     }
 
                     LearnGrid {
-                        items: Learn.desk;
+                        items: root.phone ? Learn.phone : Learn.desk;
                         link(name) => { root.link(name); }
                     }
 
@@ -1828,7 +1830,7 @@ component WideHome inherits Rectangle {
 
                     Rectangle { height: 8px; }
 
-                    for item in Learn.desk: LearnCard {
+                    for item in (root.phone ? Learn.phone : Learn.desk): LearnCard {
                         height: 58px;
                         flat: true;
                         item: item;
@@ -2084,7 +2086,7 @@ export component StartScreen inherits Rectangle {
     /// One of the page's links, by name; see `start::link` in Rust.
     callback link(name: string);
 
-    property <bool> narrow: root.phone || root.width < 680px;
+    property <bool> narrow: root.width < 680px;
 
     background: Theme.launch-page;
     clip: true;
@@ -2099,6 +2101,7 @@ export component StartScreen inherits Rectangle {
         busy: root.busy;
         version: root.version;
         can-drop: root.can-drop;
+        phone: root.phone;
         compose => { root.compose(); }
         open => { root.open(); }
         open-recent(path) => { root.open-recent(path); }

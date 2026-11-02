@@ -75,7 +75,7 @@ on:
   # Every push to main, so main is known to build for phones; a push that
   # changes only words for people to read builds nothing.
   push:
-    branches: [main]
+    branches: ["**"]
     paths-ignore:
       - "**.md"
       - "docs/**"

@@ -212,8 +212,8 @@ export component App inherits Window {
     // Below this the three columns cannot all hold their minimum and the panes
     // start eating each other. The phone shell has no columns, and a phone
     // is narrower than this on every side.
-    min-width: root.phone ? 320px : 900px;
-    min-height: root.phone ? 480px : 560px;
+    min-width: root.phone ? 280px : 900px;
+    min-height: root.phone ? 280px : 560px;
     // So the shortcuts work before anything has been clicked. Without it the
     // window opens with nothing focused, and a key would have nowhere to be
     // delivered from until the first press landed somewhere.
@@ -302,9 +302,9 @@ export component App inherits Window {
     /// does whenever it is narrow. Set once from Rust; see platform::phone.
     in property <bool> phone;
     /// A sheet with pages of its own is the whole window, inside its safe
-    /// area, on a phone and in any window too narrow for it to float as a
+    /// area, on a narrow phone and in any window too narrow for it to float as a
     /// card with room around it.
-    property <bool> sheets-fill: root.phone || root.width < 600px;
+    property <bool> sheets-fill: (root.phone && root.width < 720px) || root.width < 600px;
     /// Which floating tool card is in front: "captions" or "speech". The
     /// one opened or grabbed last; Escape closes it first.
     property <string> front-tool: "captions";
