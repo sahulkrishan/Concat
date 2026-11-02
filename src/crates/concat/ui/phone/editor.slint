@@ -448,37 +448,66 @@ export component PhoneEditor inherits Rectangle {
 
     background: Theme.page;
 
-    // Placed rather than laid out. The lanes take a share of the screen's
-    // height, and a layout that read the height of the thing it is sizing
-    // is a binding loop - the launch screen has the same note. Five rows,
-    // each at a height of its own: the bar and the lanes are measured up
-    // from the foot, the top bar and the transport down from the head, and
-    // the monitor is what is left between.
+    // Detect landscape orientation on wide/tablet/foldable screens
+    property <bool> is-landscape: root.width > root.height && root.width >= 600px;
+    property <bool> is-tablet-portrait: !root.is-landscape && root.width >= 600px;
+
+    // Split division in landscape mode: left pane ~48% for monitor + transport, right pane for timeline & tools
+    property <length> split-x: root.is-landscape ? root.width * 0.48 : 0px;
+    property <length> right-w: root.is-landscape ? root.width - root.split-x : root.width;
+
     property <length> top-h: 48px;
-    property <length> transport-h: 60px;
-    /// A third of the screen, and never less than a ruler and two lanes.
-    property <length> lanes-h: Math.max(170px, root.height * 0.3);
+    property <length> transport-h: root.is-landscape ? 52px : 60px;
     property <length> bar-h: 74px;
-    property <length> lanes-y: root.height - root.bar-h - root.lanes-h;
-    property <length> transport-y: root.lanes-y - root.transport-h;
-    /// How tall the sheet is when one is up. The bin's is lower: it is a
-    /// grid to pick from, and the picture is what the picks are judged in.
-    property <length> sheet-h: root.sheet == "media" ? root.height * 0.52 : root.height * 0.6;
-    /// The foot of the monitor: the transport's head, or the sheet's while
-    /// one is up - the monitor shrinks to the room left above the sheet
-    /// rather than going under it, so the whole picture stays in view
-    /// while a sheet works on it.
-    property <length> monitor-foot: root.sheet != ""
-        ? Math.min(root.transport-y, root.height - root.sheet-h)
-        : root.transport-y;
-    /// The Add bar under the bin while something is picked.
+
+    // In portrait:
+    property <length> portrait-lanes-h: root.is-tablet-portrait
+        ? Math.max(240px, root.height * 0.38)
+        : Math.max(170px, root.height * 0.30);
+    property <length> portrait-lanes-y: root.height - root.bar-h - root.portrait-lanes-h;
+    property <length> portrait-transport-y: root.portrait-lanes-y - root.transport-h;
+
+    // In landscape:
+    property <length> landscape-lanes-y: root.top-h;
+    property <length> landscape-lanes-h: Math.max(120px, root.height - root.top-h - root.bar-h);
+
+    // Active dimensions depending on is-landscape:
+    property <length> lanes-x: root.is-landscape ? root.split-x : 0px;
+    property <length> lanes-y: root.is-landscape ? root.landscape-lanes-y : root.portrait-lanes-y;
+    property <length> lanes-w: root.is-landscape ? root.right-w : root.width;
+    property <length> lanes-h: root.is-landscape ? root.landscape-lanes-h : root.portrait-lanes-h;
+
+    property <length> transport-x: 0px;
+    property <length> transport-y: root.is-landscape ? root.height - root.transport-h : root.portrait-transport-y;
+    property <length> transport-w: root.is-landscape ? root.split-x : root.width;
+
+    property <length> bar-x: root.is-landscape ? root.split-x : 0px;
+    property <length> bar-y: root.height - root.bar-h;
+    property <length> bar-w: root.is-landscape ? root.right-w : root.width;
+
+    property <length> sheet-h: root.is-landscape
+        ? Math.max(120px, root.height - root.top-h)
+        : (root.sheet == "media" ? root.height * 0.52 : root.height * 0.6);
+
+    property <length> monitor-foot: root.is-landscape
+        ? root.height - root.transport-h
+        : (root.sheet != "" ? Math.min(root.portrait-transport-y, root.height - root.sheet-h) : root.portrait-transport-y);
+
+    property <length> monitor-x: 0px;
+    property <length> monitor-y: root.is-landscape ? 0px : root.top-h;
+    property <length> monitor-w: root.is-landscape ? root.split-x : root.width;
+    property <length> monitor-h: Math.max(0px, root.monitor-foot - root.monitor-y);
+
+    property <length> top-bar-x: root.is-landscape ? root.split-x : 0px;
+    property <length> top-bar-y: 0px;
+    property <length> top-bar-w: root.is-landscape ? root.right-w : root.width;
     property <length> add-bar-h: 68px;
 
     // ── the top bar ──────────────────────────────────────────────────
     Rectangle {
-        x: 0;
-        y: 0;
-        width: root.width;
+        x: root.top-bar-x;
+        y: root.top-bar-y;
+        width: root.top-bar-w;
         height: root.top-h;
 
         HorizontalLayout {
@@ -513,6 +542,30 @@ export component PhoneEditor inherits Rectangle {
                     color: Theme.fg-dim;
                     font-size: Theme.fs-xs;
                     horizontal-alignment: center;
+                }
+            }
+
+            if root.is-landscape: VerticalLayout {
+                alignment: center;
+                RoundButton {
+                    glyph: Glyph.undo;
+                    label: I18n.t("phone.undo");
+                    enabled: Editor.can-undo;
+                    size: 34px;
+                    icon-size: 16px;
+                    clicked => { Editor.undo(); }
+                }
+            }
+
+            if root.is-landscape: VerticalLayout {
+                alignment: center;
+                RoundButton {
+                    glyph: Glyph.redo;
+                    label: I18n.t("phone.redo");
+                    enabled: Editor.can-redo;
+                    size: 34px;
+                    icon-size: 16px;
+                    clicked => { Editor.redo(); }
                 }
             }
 
@@ -566,6 +619,15 @@ export component PhoneEditor inherits Rectangle {
         }
     }
 
+    // ── vertical divider between columns in landscape ──────────────────
+    if root.is-landscape: Rectangle {
+        x: root.split-x - 1px;
+        y: 0;
+        width: 1px;
+        height: root.height;
+        background: Theme.line;
+    }
+
     // ── the monitor ──────────────────────────────────────────────────
     //
     // The pane's stage alone, with 8px of the ground either side so it
@@ -573,10 +635,10 @@ export component PhoneEditor inherits Rectangle {
     // keeps its gestures: a drag moves the selected picture, a press
     // on the well pans the view, a double tap fits it again.
     Rectangle {
-        x: 0;
-        y: root.top-h;
-        width: root.width;
-        height: Math.max(0px, root.monitor-foot - root.top-h);
+        x: root.monitor-x;
+        y: root.monitor-y;
+        width: root.monitor-w;
+        height: root.monitor-h;
 
         monitor := PreviewPane {
             x: 8px;
@@ -641,9 +703,9 @@ export component PhoneEditor inherits Rectangle {
     property <int> rate: Math.max(1, Math.round(Editor.frame-rate));
 
     Rectangle {
-        x: 0;
+        x: root.transport-x;
         y: root.transport-y;
-        width: root.width;
+        width: root.transport-w;
         height: root.transport-h;
 
         HorizontalLayout {
@@ -683,7 +745,7 @@ export component PhoneEditor inherits Rectangle {
                     clicked => { monitor.fit-view(); }
                 }
             }
-            VerticalLayout {
+            if !root.is-landscape: VerticalLayout {
                 alignment: center;
                 RoundButton {
                     glyph: Glyph.undo;
@@ -694,7 +756,7 @@ export component PhoneEditor inherits Rectangle {
                     clicked => { Editor.undo(); }
                 }
             }
-            VerticalLayout {
+            if !root.is-landscape: VerticalLayout {
                 alignment: center;
                 RoundButton {
                     glyph: Glyph.redo;
@@ -749,9 +811,9 @@ export component PhoneEditor inherits Rectangle {
     // No lane headers: a lane is untyped and its switches are the desk's
     // business; the clips are the whole of what a thumb needs here.
     stack := Rectangle {
-        x: 0;
+        x: root.lanes-x;
         y: root.lanes-y;
-        width: root.width;
+        width: root.lanes-w;
         height: root.lanes-h;
 
         // The stack scrolls here rather than in Rust, as it does in the
@@ -911,9 +973,9 @@ export component PhoneEditor inherits Rectangle {
 
     // ── the bar ──────────────────────────────────────────────────────
     Rectangle {
-        x: 0;
-        y: root.height - root.bar-h;
-        width: root.width;
+        x: root.bar-x;
+        y: root.bar-y;
+        width: root.bar-w;
         height: root.bar-h;
 
         Rectangle {
@@ -1195,10 +1257,14 @@ export component PhoneEditor inherits Rectangle {
     // library's pages close themselves once something is placed, so what
     // was placed is seen, and the inspector's stay up to be worked in.
     sheet := PhoneSheet {
-        x: 0;
+        x: root.is-landscape ? root.split-x : 0px;
         y: 0;
-        width: root.width;
+        width: root.is-landscape ? root.right-w : root.width;
         height: root.height;
+        side-panel: root.is-landscape;
+        surface-x: 0px;
+        surface-y: root.is-landscape ? (root.top-h + self.drag) : (root.height - self.sheet-height + self.drag);
+        surface-width: root.is-landscape ? root.right-w : root.width;
         sheet-height: root.sheet-h;
         open: root.sheet != "";
         title: root.sheet-title(root.sheet);
@@ -1654,9 +1720,9 @@ export component PhoneEditor inherits Rectangle {
     // grid rather than in its scroll, so it is under the thumb however far
     // down the picks are; it follows the sheet when the sheet is dragged.
     if root.sheet == "media" && Editor.media-selected-count > 0: Rectangle {
-        x: 0;
+        x: root.is-landscape ? root.split-x : 0;
         y: root.height - root.add-bar-h + sheet.drag;
-        width: root.width;
+        width: root.is-landscape ? root.right-w : root.width;
         height: root.add-bar-h;
         background: Theme.panel;
 

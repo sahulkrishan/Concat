@@ -23,6 +23,10 @@ export component PhoneSheet inherits Rectangle {
     /// How much of the screen the sheet takes: enough for a panel, with
     /// the monitor still in view above it.
     in property <length> sheet-height: root.height * 0.6;
+    in property <bool> side-panel: false;
+    in property <length> surface-x: 0px;
+    in property <length> surface-y: root.side-panel ? 0px : root.height - self.height + root.drag;
+    in property <length> surface-width: root.width;
 
     callback closed();
 
@@ -37,18 +41,18 @@ export component PhoneSheet inherits Rectangle {
 
     // What is left above the sheet. A tap there is a dismissal; declared
     // first, so the surface takes its own presses.
-    TouchArea {
+    if !root.side-panel: TouchArea {
         clicked => { root.closed(); }
     }
 
     surface := Rectangle {
-        x: 0;
-        y: root.height - self.height + root.drag;
-        width: root.width;
+        x: root.surface-x;
+        y: root.surface-y;
+        width: root.surface-width;
         height: root.sheet-height;
         background: Theme.panel;
-        border-top-left-radius: Theme.r-xl;
-        border-top-right-radius: Theme.r-xl;
+        border-top-left-radius: root.side-panel ? 0px : Theme.r-xl;
+        border-top-right-radius: root.side-panel ? 0px : Theme.r-xl;
         border-width: 1px;
         border-color: Theme.line-strong;
         clip: true;
