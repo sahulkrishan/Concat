@@ -86,6 +86,14 @@ pub struct MediaBin {
     /// publish, thirty times a second in playback, and the path is the
     /// one expensive line of a row.
     waves: std::cell::RefCell<HashMap<String, (usize, f32, slint::SharedString)>>,
+    /// Whether an import is currently in progress.
+    pub importing: bool,
+    /// Number of media file probes currently running in worker threads.
+    import_in_flight: usize,
+    /// Count of successfully added media items in the current import operation.
+    import_added: usize,
+    /// Accumulated probe errors during the current import operation.
+    import_failures: Vec<String>,
 }
 
 impl Default for MediaBin {
@@ -99,6 +107,10 @@ impl Default for MediaBin {
             sort: 0,
             thumbs: HashMap::new(),
             waves: Default::default(),
+            importing: false,
+            import_in_flight: 0,
+            import_added: 0,
+            import_failures: Vec::new(),
         }
     }
 }
@@ -167,28 +179,31 @@ impl MediaBin {
                 if paths.is_empty() || studio.session.is_none() {
                     return;
                 }
-                spawn_in_project(
-                    move || {
-                        paths
-                            .iter()
-                            .map(|path| media::probe(&path.to_string_lossy()))
-                            .collect::<Vec<_>>()
-                    },
-                    |studio, _, _, results| studio.handle(Msg::Media(MediaMsg::Imported(results))),
-                );
+                self.importing = true;
+                self.import_in_flight += paths.len();
+                for path in paths {
+                    spawn_in_project(
+                        move || media::probe(&path.to_string_lossy()),
+                        |studio, _, _, result| {
+                            studio.handle(Msg::Media(MediaMsg::Imported(vec![result])));
+                        },
+                    );
+                }
             }
             MediaMsg::Imported(results) => {
                 let mut commands = Vec::new();
-                let mut failures = Vec::new();
                 for result in results {
+                    self.import_in_flight = self.import_in_flight.saturating_sub(1);
                     match result {
-                        Ok(summary) => commands.push(Command::AddMedia {
-                            item: summary.to_new_media(),
-                        }),
-                        Err(error) => failures.push(error),
+                        Ok(summary) => {
+                            self.import_added += 1;
+                            commands.push(Command::AddMedia {
+                                item: summary.to_new_media(),
+                            });
+                        }
+                        Err(error) => self.import_failures.push(error),
                     }
                 }
-                let added = commands.len();
                 if !commands.is_empty() {
                     let before: HashSet<String> = studio
                         .project()
@@ -209,22 +224,28 @@ impl MediaBin {
                             .map(|item| item.id.clone())
                             .collect();
                         if !fresh.is_empty() {
-                            self.selected = fresh.iter().cloned().collect();
-                            self.picked = fresh;
+                            self.selected.extend(fresh.iter().cloned());
+                            self.picked.extend(fresh);
                         }
                     }
                 }
-                if let Some(error) = failures.first() {
-                    studio.notify(&probe_error(error), true);
-                } else if added > 0 {
-                    studio.notify(
-                        &if added == 1 {
-                            t("mediaBin.importedOneFile")
-                        } else {
-                            tf("mediaBin.importedFiles", &[&added])
-                        },
-                        false,
-                    );
+                if self.import_in_flight == 0 {
+                    self.importing = false;
+                    let total_added = self.import_added;
+                    let failures = std::mem::take(&mut self.import_failures);
+                    self.import_added = 0;
+                    if let Some(error) = failures.first() {
+                        studio.notify(&probe_error(error), true);
+                    } else if total_added > 0 {
+                        studio.notify(
+                            &if total_added == 1 {
+                                t("mediaBin.importedOneFile")
+                            } else {
+                                tf("mediaBin.importedFiles", &[&total_added])
+                            },
+                            false,
+                        );
+                    }
                 }
             }
             MediaMsg::AddSelectedAtPlayhead => {
@@ -698,5 +719,40 @@ mod tests {
         let caught = bin.band(&project, 1, (0, 0), (0, 0), true);
         assert_eq!(caught.len(), 2);
         assert!(caught.contains("i1") && caught.contains("x"));
+    }
+
+    #[test]
+    fn importing_state_tracks_in_flight_probes() {
+        let mut bin = MediaBin::default();
+        assert!(!bin.importing);
+        assert_eq!(bin.import_in_flight, 0);
+
+        // Simulate 2 files in flight
+        bin.importing = true;
+        bin.import_in_flight = 2;
+
+        let summary = MediaSummary {
+            path: "/path/video1.mp4".into(),
+            duration: Some(10.0),
+            kind: Kind::Video,
+            video: None,
+            audio: None,
+            audio_tracks: Vec::new(),
+        };
+
+        // First item completes
+        bin.import_in_flight = bin.import_in_flight.saturating_sub(1);
+        bin.import_added += 1;
+        assert!(bin.importing, "still importing while in-flight > 0");
+        assert_eq!(bin.import_in_flight, 1);
+
+        // Second item completes
+        bin.import_in_flight = bin.import_in_flight.saturating_sub(1);
+        bin.import_added += 1;
+        if bin.import_in_flight == 0 {
+            bin.importing = false;
+        }
+        assert!(!bin.importing, "importing clears when in-flight reaches 0");
+        assert_eq!(bin.import_added, 2);
     }
 }
