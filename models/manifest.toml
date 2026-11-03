@@ -274,7 +274,7 @@ file = "DeepFilterNet3_onnx.tar.gz"
 bytes = 7983136
 sha256 = "c94d91f70911001c946e0fabb4aa9adc37045f45a03b56008cb0c8244cb63616"
 licence = "MIT"
-upstream = "https://raw.githubusercontent.com/Rikorose/DeepFilterNet/e6357cf18df1374528d2d665971439223cbce31c/models/DeepFilterNet3_onnx.tar.gz"
+upstream = "https://raw.githubusercontent.com/Rikorose/DeepFilterNet/main/models/DeepFilterNet3_onnx.tar.gz"
 
 [[model]]
 id = "mossformer2_se_48k_int8.onnx"

@@ -472,6 +472,8 @@ fn start(project: Option<std::path::PathBuf>, smoke: bool) -> Result<(), slint::
         app.set_app_menu_items(ModelRc::from(models.bar.clone()));
         app.set_transcribers(ModelRc::from(models.transcribers.clone()));
         app.set_voices(ModelRc::from(models.voices.clone()));
+        app.set_noise_models(ModelRc::from(models.noise_models.clone()));
+        app.set_vocal_models(ModelRc::from(models.vocal_models.clone()));
         app.set_versions(ModelRc::from(models.versions.clone()));
         app.set_version_details(ModelRc::from(models.version_details.clone()));
         editor.set_seats(ModelRc::from(models.seats.clone()));

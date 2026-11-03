@@ -781,6 +781,8 @@ pub struct Models {
     pub voice_styles: Rc<VecModel<crate::ui::VoiceCardData>>,
     pub transcribers: Rc<VecModel<ModelData>>,
     pub voices: Rc<VecModel<ModelData>>,
+    pub noise_models: Rc<VecModel<ModelData>>,
+    pub vocal_models: Rc<VecModel<ModelData>>,
     /// The Version page's releases, and beside each its day or that it
     /// is this one.
     pub versions: Rc<VecModel<SharedString>>,
@@ -862,6 +864,8 @@ impl Models {
             voice_styles: Rc::new(VecModel::default()),
             transcribers: Rc::new(VecModel::default()),
             voices: Rc::new(VecModel::default()),
+            noise_models: Rc::new(VecModel::default()),
+            vocal_models: Rc::new(VecModel::default()),
             versions: Rc::new(VecModel::default()),
             version_details: Rc::new(VecModel::default()),
             seats: Rc::new(VecModel::default()),
@@ -8275,8 +8279,16 @@ impl Studio {
             preset,
             remove_noise,
             isolate_vocals,
-            noise_model: "DeepFilterNet3_onnx.tar.gz".to_owned(),
-            vocal_model: "mossformer2_se_48k_int8.onnx".to_owned(),
+            noise_model: self
+                .prefs
+                .noise_removal_model
+                .clone()
+                .unwrap_or_else(|| concat_host::clean_audio::DEEPFILTERNET3_FILE.to_owned()),
+            vocal_model: self
+                .prefs
+                .vocal_isolation_model
+                .clone()
+                .unwrap_or_else(|| concat_host::clean_audio::MOSSFORMER2_FILE.to_owned()),
         };
 
         let clip_id = clip.id.clone();
@@ -12406,6 +12418,8 @@ impl Studio {
         app.set_settings(self.settings.data(self));
         sync(&models.transcribers, self.settings.transcriber_rows());
         sync(&models.voices, self.settings.voice_rows());
+        sync(&models.noise_models, self.settings.noise_model_rows());
+        sync(&models.vocal_models, self.settings.vocal_model_rows());
         sync(&models.versions, self.settings.version_rows());
         sync(&models.version_details, self.settings.version_details());
         app.set_relink(self.relink.data());

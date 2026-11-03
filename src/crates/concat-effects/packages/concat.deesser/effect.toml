@@ -18,4 +18,4 @@ step = 1
 unit = "%"
 
 [ffmpeg]
-chain = "deesser=i={fixed(amount / 100 * 0.8, 2)}:m=0.5:f=ess"
+chain = "deesser=i={fixed(amount / 100 * 0.8, 2)}:m=0.5:f=0.5:s=o"

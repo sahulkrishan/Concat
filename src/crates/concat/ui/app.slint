@@ -347,6 +347,8 @@ export component App inherits Window {
     in property <SettingsData> settings;
     in property <[ModelData]> transcribers;
     in property <[ModelData]> voices;
+    in property <[ModelData]> noise-models;
+    in property <[ModelData]> vocal-models;
     in property <[string]> versions;
     in property <[string]> version-details;
     in property <[string]> languages;
@@ -998,6 +1000,8 @@ export component App inherits Window {
         data: root.settings;
         transcribers: root.transcribers;
         voices: root.voices;
+        noise-models: root.noise-models;
+        vocal-models: root.vocal-models;
         versions: root.versions;
         version-details: root.version-details;
         languages: root.languages;

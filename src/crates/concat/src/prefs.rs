@@ -52,6 +52,12 @@ pub struct Preferences {
     pub caption_language: Option<String>,
     /// The chosen speech model id.
     pub tts_model: Option<String>,
+    /// The chosen noise removal model id, e.g. "DeepFilterNet3_onnx.tar.gz".
+    #[serde(default)]
+    pub noise_removal_model: Option<String>,
+    /// The chosen vocal isolation model id, e.g. "mossformer2_se_48k_int8.onnx".
+    #[serde(default)]
+    pub vocal_isolation_model: Option<String>,
     /// The chosen Kokoro speaker id.
     pub tts_voice: Option<i32>,
     /// The interface's locale code ("de", "pt-BR", ...); absent is English.

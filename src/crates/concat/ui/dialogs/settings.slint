@@ -628,6 +628,8 @@ export component SettingsDialog inherits Modal {
     in property <SettingsData> data;
     in property <[ModelData]> transcribers;
     in property <[ModelData]> voices;
+    in property <[ModelData]> noise-models;
+    in property <[ModelData]> vocal-models;
     /// the releases a person can switch to, newest first, and beside each
     /// the day it came out - or that it is this one
     in property <[string]> versions;
@@ -726,6 +728,7 @@ export component SettingsDialog inherits Modal {
         {label: I18n.t("settings.shortcuts"), glyph: Glyph.keyboard, page: 7, desk: true},
         {label: I18n.t("common.transcriber"), glyph: Glyph.waveform, page: 2, desk: false},
         {label: I18n.t("common.speech"), glyph: Glyph.music, page: 3, desk: false},
+        {label: I18n.t("common.cleanAudio"), glyph: Glyph.volume, page: 8, desk: false},
         {label: I18n.t("settings.automation"), glyph: Glyph.lock, page: 4, desk: true},
         {label: I18n.t("settings.version"), glyph: Glyph.tag, page: 6, desk: true},
         {label: I18n.t("settings.about"), glyph: Glyph.sparkle, page: 5, desk: false},
@@ -1278,6 +1281,68 @@ export component SettingsDialog inherits Modal {
                         remove => { root.model-remove(model.id); }
                         open-link => { root.model-open-link(model.id); }
                         choose-file => { root.model-choose-file(model.id); }
+                    }
+                }
+            }
+
+            if root.data.tab == 8: VerticalLayout {
+                DialogSection {
+                    ruled: false;
+                    first: true;
+                    title: I18n.t("settings.noiseRemoval");
+
+                    for model in root.noise-models: ModelRow {
+                        compact: root.compact;
+                        model: model;
+                        activated => { root.model-activated(model.id); }
+                        download => { root.model-download(model.id); }
+                        cancel => { root.model-cancel(model.id); }
+                        remove => { root.model-remove(model.id); }
+                        open-link => { root.model-open-link(model.id); }
+                        choose-file => { root.model-choose-file(model.id); }
+                    }
+                }
+
+                DialogSection {
+                    ruled: false;
+                    first: false;
+                    title: I18n.t("settings.vocalIsolation");
+
+                    for model in root.vocal-models: ModelRow {
+                        compact: root.compact;
+                        model: model;
+                        activated => { root.model-activated(model.id); }
+                        download => { root.model-download(model.id); }
+                        cancel => { root.model-cancel(model.id); }
+                        remove => { root.model-remove(model.id); }
+                        open-link => { root.model-open-link(model.id); }
+                        choose-file => { root.model-choose-file(model.id); }
+                    }
+
+                    HorizontalLayout {
+                        padding-top: 2px;
+                        spacing: 6px;
+
+                        Text {
+                            horizontal-stretch: 1;
+                            text: root.data.disk;
+                            color: Theme.fg-muted;
+                            font-family: Theme.font-technical;
+                            font-size: Theme.fs-sm;
+                            vertical-alignment: center;
+                        }
+
+                        VerticalLayout {
+                            alignment: center;
+                            Icon { glyph: Glyph.check; size: 12px; tint: Theme.green; }
+                        }
+
+                        Text {
+                            text: I18n.t("settings.runsLocally");
+                            color: Theme.green;
+                            font-size: Theme.fs-sm;
+                            vertical-alignment: center;
+                        }
                     }
                 }
             }

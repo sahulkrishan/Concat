@@ -35,6 +35,8 @@ pub struct ModelSpec {
     pub id: &'static str,
     /// Human-readable model display name.
     pub name: &'static str,
+    /// Brief description of the model.
+    pub note: &'static str,
     /// Destination filename on disk.
     pub file: &'static str,
     /// Upstream download URL.
@@ -45,6 +47,8 @@ pub struct ModelSpec {
     pub sha256: &'static str,
     /// Software license name.
     pub licence: &'static str,
+    /// True if this model is for vocal isolation; false for noise removal.
+    pub is_vocal_isolation: bool,
 }
 
 /// The downloadable audio clean-up models.
@@ -52,28 +56,80 @@ pub const MODELS: [ModelSpec; 2] = [
     ModelSpec {
         id: "DeepFilterNet3_onnx.tar.gz",
         name: "DeepFilterNet3",
+        note: "Background noise removal · 48 kHz complex deep filtering",
         file: "DeepFilterNet3_onnx.tar.gz",
-        upstream: "https://raw.githubusercontent.com/Rikorose/DeepFilterNet/e6357cf18df1374528d2d665971439223cbce31c/models/DeepFilterNet3_onnx.tar.gz",
+        upstream: "https://raw.githubusercontent.com/Rikorose/DeepFilterNet/main/models/DeepFilterNet3_onnx.tar.gz",
         bytes: 7_983_136,
         sha256: "c94d91f70911001c946e0fabb4aa9adc37045f45a03b56008cb0c8244cb63616",
         licence: "MIT",
+        is_vocal_isolation: false,
     },
     ModelSpec {
         id: "mossformer2_se_48k_int8.onnx",
         name: "MossFormer2",
+        note: "Vocal isolation · 48 kHz ClearerVoice recurrent speech separation",
         file: "mossformer2_se_48k_int8.onnx",
         upstream: "https://huggingface.co/ipsilondev/MossFormer2-SE-48K-ONNX/resolve/40dd49e2d52152d08e5a09a63a5d9465e6bf6329/model.onnx",
         bytes: 94_268_636,
         sha256: "2f98c2b3d16cd30f9367181a4328a813a5455121267138836f25218467957b54",
         licence: "Apache-2.0",
+        is_vocal_isolation: true,
     },
 ];
+
+/// Progress report for an audio model download.
+#[derive(Clone, Debug)]
+pub struct ModelDownloadProgress {
+    /// Model identifier.
+    pub id: String,
+    /// Bytes received so far.
+    pub received: u64,
+    /// Total bytes expected.
+    pub total: u64,
+    /// Whether archive is currently unpacking.
+    pub unpacking: bool,
+    /// Whether download is complete.
+    pub done: bool,
+}
+
+/// Model status list for the settings sheet.
+#[derive(Clone, Debug)]
+pub struct CleanAudioStatus {
+    /// Directory where audio models are located.
+    pub models_dir: String,
+    /// Models list and their installation status.
+    pub models: Vec<CleanModelStatus>,
+}
+
+/// Status of one audio clean-up model.
+#[derive(Clone, Debug)]
+pub struct CleanModelStatus {
+    /// Model identifier.
+    pub id: String,
+    /// Model human-readable name.
+    pub label: String,
+    /// Short description of model capability.
+    pub blurb: String,
+    /// Size in bytes.
+    pub size_bytes: u64,
+    /// Whether the model is downloaded and ready on disk.
+    pub downloaded: bool,
+    /// True for vocal isolation; false for background noise removal.
+    pub is_vocal_isolation: bool,
+}
 
 /// Finds a model specification by id or file name.
 pub fn model_spec(id_or_file: &str) -> Option<&'static ModelSpec> {
     MODELS
         .iter()
         .find(|m| m.id == id_or_file || m.file == id_or_file)
+}
+
+/// What model `id` is called as a file and where it is downloaded from.
+pub fn model_sources(id: &str) -> Option<(String, Vec<String>)> {
+    let spec = model_spec(id)?;
+    let sources = models::sources(spec.file, spec.upstream);
+    Some((spec.file.to_string(), sources))
 }
 
 /// Where audio models live on disk: `<app data>/audio-models/`.
@@ -221,6 +277,7 @@ pub fn preset_filters(preset: &str) -> Vec<AppliedFilter> {
 pub struct CleanAudioEngine {
     dirs: AppDirs,
     gate: Arc<SingleFlight>,
+    downloads: Arc<SingleFlight>,
 }
 
 impl CleanAudioEngine {
@@ -229,7 +286,27 @@ impl CleanAudioEngine {
         Self {
             dirs: dirs.clone(),
             gate: Arc::new(SingleFlight::new()),
+            downloads: Arc::new(SingleFlight::new()),
         }
+    }
+
+    /// Per-model state for the settings panel.
+    pub fn status(dirs: &AppDirs) -> Result<CleanAudioStatus, String> {
+        let dir = models_dir(dirs)?;
+        Ok(CleanAudioStatus {
+            models_dir: dir.to_string_lossy().into_owned(),
+            models: MODELS
+                .iter()
+                .map(|spec| CleanModelStatus {
+                    id: spec.id.to_owned(),
+                    label: spec.name.to_owned(),
+                    blurb: spec.note.to_owned(),
+                    size_bytes: spec.bytes,
+                    downloaded: is_model_installed(dirs, spec.file),
+                    is_vocal_isolation: spec.is_vocal_isolation,
+                })
+                .collect(),
+        })
     }
 
     /// Whether a clean job is currently running.
@@ -240,6 +317,66 @@ impl CleanAudioEngine {
     /// Cancels any currently running clean job.
     pub fn cancel(&self) {
         self.gate.cancel();
+    }
+
+    /// Asks the running download to stop. Idle is a harmless no-op.
+    pub fn cancel_download(&self) {
+        self.downloads.cancel();
+    }
+
+    /// Removes a downloaded model file from disk.
+    pub fn delete_model(&self, dirs: &AppDirs, id: &str) -> Result<(), String> {
+        let spec = model_spec(id).ok_or_else(|| format!("unknown model: {id}"))?;
+        let path = model_path(dirs, spec.file)?;
+        if path.exists() {
+            std::fs::remove_file(&path)
+                .map_err(|e| format!("could not remove {}: {e}", path.display()))?;
+        }
+        Ok(())
+    }
+
+    /// Streams one clean-up model from Concat's mirror/upstream into the models folder.
+    pub fn download_model(
+        &self,
+        dirs: &AppDirs,
+        id: &str,
+        mut progress: impl FnMut(ModelDownloadProgress),
+    ) -> Result<(), String> {
+        let job = self.downloads.begin("audio model download")?;
+        let spec = model_spec(id).ok_or_else(|| format!("unknown model: {id}"))?;
+        let dest = model_path(dirs, spec.file)?;
+        if dest.exists() {
+            return Ok(());
+        }
+        let partial = dest.with_extension("part");
+        let (received, total) = models::fetch(
+            spec.file,
+            spec.upstream,
+            &partial,
+            spec.bytes,
+            spec.sha256,
+            job.cancel_flag(),
+            "download cancelled",
+            &mut |received, total| {
+                progress(ModelDownloadProgress {
+                    id: id.to_owned(),
+                    received,
+                    total,
+                    unpacking: false,
+                    done: false,
+                });
+            },
+        )?;
+        std::fs::rename(&partial, &dest)
+            .map_err(|e| format!("failed to finalize {}: {e}", dest.display()))?;
+        progress(ModelDownloadProgress {
+            id: id.to_owned(),
+            received,
+            total,
+            unpacking: false,
+            done: true,
+        });
+        Ok(())
     }
 
     /// Downloads a model if it is not already present on disk.
@@ -258,35 +395,21 @@ impl CleanAudioEngine {
         let spec = model_spec(file).ok_or_else(|| format!("unknown model file: {file}"))?;
         let partial = dest.with_extension("part");
 
-        let urls = models::sources(spec.file, spec.upstream);
-        let mut downloaded = false;
+        let mut cb = |got: u64, total: u64| {
+            let total = if total > 0 { total } else { spec.bytes };
+            progress((got as f32 / total as f32).clamp(0.0, 1.0));
+        };
 
-        for url in urls {
-            if cancel.load(Ordering::Relaxed) {
-                let _ = std::fs::remove_file(&partial);
-                return Err("download cancelled".into());
-            }
-
-            let mut cb = |got: u64, total: u64| {
-                let total = if total > 0 { total } else { spec.bytes };
-                progress((got as f32 / total as f32).clamp(0.0, 1.0));
-            };
-
-            match models::download(&url, &partial, spec.bytes, cancel, "cancelled", &mut cb) {
-                Ok(_) => {
-                    downloaded = true;
-                    break;
-                }
-                Err(err) => {
-                    log::warn!("clean_audio: download attempt from {url} failed: {err}");
-                }
-            }
-        }
-
-        if !downloaded {
-            let _ = std::fs::remove_file(&partial);
-            return Err(format!("could not download model {}", spec.name));
-        }
+        models::fetch(
+            spec.file,
+            spec.upstream,
+            &partial,
+            spec.bytes,
+            spec.sha256,
+            cancel,
+            "download cancelled",
+            &mut cb,
+        )?;
 
         std::fs::rename(&partial, &dest)
             .map_err(|e| format!("failed to finalize model file: {e}"))?;
@@ -527,5 +650,24 @@ mod tests {
 
         let crisp = preset_filters("crisp");
         assert!(crisp.iter().any(|f| f.id == "concat.podcast-eq"));
+    }
+
+    #[test]
+    fn status_and_sources_report_models() {
+        let temp = std::env::temp_dir().join(format!("concat-clean-status-{}", std::process::id()));
+        let dirs = AppDirs {
+            config: temp.clone(),
+            data: temp.clone(),
+        };
+        let status = CleanAudioEngine::status(&dirs).expect("status succeeds");
+        assert_eq!(status.models.len(), 2);
+        assert!(status.models.iter().any(|m| m.id == DEEPFILTERNET3_FILE && !m.is_vocal_isolation));
+        assert!(status.models.iter().any(|m| m.id == MOSSFORMER2_FILE && m.is_vocal_isolation));
+
+        let sources = model_sources(DEEPFILTERNET3_FILE).expect("sources for deepfilternet3");
+        assert_eq!(sources.0, DEEPFILTERNET3_FILE);
+        assert!(!sources.1.is_empty());
+
+        let _ = std::fs::remove_dir_all(&temp);
     }
 }
