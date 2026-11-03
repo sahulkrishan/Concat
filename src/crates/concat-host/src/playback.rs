@@ -627,6 +627,8 @@ struct Reach {
     /// runs - the file, the stream, the speed and the filters - so that two
     /// spans with the same one are the same sound at the same instant.
     source: String,
+    /// The media identity without filters: file path, stream, speed and pitch.
+    media_source: String,
     /// Source seconds the span starts and ends at.
     from: f64,
     to: f64,
@@ -655,6 +657,13 @@ impl Reach {
                 speed.to_bits(),
                 spec.preserve_pitch,
                 spec.chain
+            ),
+            media_source: format!(
+                "{}\0{:?}\0{:016x}\0{}",
+                spec.path,
+                spec.audio_stream,
+                speed.to_bits(),
+                spec.preserve_pitch,
             ),
             from: spec.source_start,
             to: spec.source_start + spec.duration * speed,
@@ -691,6 +700,25 @@ fn stand_in<'a>(cache: &'a HashMap<String, CacheEntry>, spec: &ClipSpec) -> Opti
         .filter_map(|(key, entry)| {
             let reach = entry.reach.as_ref()?;
             if reach.source != wanted.source {
+                return None;
+            }
+            let covered = reach.to.min(wanted.to) - reach.from.max(wanted.from);
+            (covered > HAIR).then_some((key, entry, reach, covered))
+        })
+        .max_by(|a, b| a.3.total_cmp(&b.3).then(a.1.last_used.cmp(&b.1.last_used)))
+        .map(|(key, _, reach, _)| (key.as_str(), reach.lead_of(&wanted)))
+}
+
+/// A fallback stand-in from the same media file and playback speed, even
+/// under a different filter treatment, while a new filter chain is decoding.
+/// This prevents audio dropouts or silence during knob turns and toggles.
+fn media_stand_in<'a>(cache: &'a HashMap<String, CacheEntry>, spec: &ClipSpec) -> Option<(&'a str, i64)> {
+    let wanted = Reach::of(spec)?;
+    cache
+        .iter()
+        .filter_map(|(key, entry)| {
+            let reach = entry.reach.as_ref()?;
+            if reach.media_source != wanted.media_source {
                 return None;
             }
             let covered = reach.to.min(wanted.to) - reach.from.max(wanted.from);
@@ -929,6 +957,7 @@ impl Playback {
         let specs = locked(&self.specs);
         let now = self.tick.fetch_add(1, Ordering::Relaxed) + 1;
         let mut cache = locked(&self.cache);
+        let last_active = locked(&self.last_active);
         // The stretches a mixed span under sound layers already covers:
         // the clips there fall silent only once it is ready to take over.
         let covered: Arc<[(f64, f64)]> = specs
@@ -941,16 +970,30 @@ impl Playback {
             .iter()
             .filter_map(|spec| {
                 // The span's own decode, or until it lands a span that
-                // holds its sound already; see `stand_in`.
+                // holds its sound already; see `stand_in` and `media_stand_in`.
                 let own = decode_key(spec);
-                let (key, lead) = if cache.contains_key(&own) {
-                    (own, 0)
+                let found_key = if cache.contains_key(&own) {
+                    Some((own, 0))
+                } else if let Some((key, lead)) = stand_in(&cache, spec) {
+                    Some((key.to_owned(), lead))
                 } else {
-                    let (key, lead) = stand_in(&cache, spec)?;
-                    (key.to_owned(), lead)
+                    media_stand_in(&cache, spec).map(|(k, lead)| (k.to_owned(), lead))
                 };
-                let entry = cache.get_mut(&key)?;
-                entry.last_used = now;
+                let (pcm, lead) = if let Some((key, lead)) = found_key {
+                    let entry = cache.get_mut(&key)?;
+                    entry.last_used = now;
+                    (Arc::clone(&entry.pcm), lead)
+                } else if let Some(prev) = last_active.iter().find(|clip| {
+                    (clip.start - spec.start).abs() < 0.01
+                        && (clip.duration - spec.duration).abs() < 0.01
+                }) {
+                    // Fall back to the audio currently playing for this timeline span
+                    // (e.g. while clean audio WAV or original file is decoding after toggle)
+                    (Arc::clone(&prev.pcm), prev.lead)
+                } else {
+                    return None;
+                };
+
                 Some(ActiveClip {
                     start: spec.start,
                     duration: spec.duration,
@@ -958,7 +1001,7 @@ impl Playback {
                     volume_curve: track_of(&spec.volume_curve),
                     fade_in: spec.fade_in,
                     fade_out: spec.fade_out,
-                    pcm: Arc::clone(&entry.pcm),
+                    pcm,
                     lead,
                     covered: if spec.bus.is_some() {
                         Arc::clone(&none)
@@ -969,6 +1012,7 @@ impl Playback {
             })
             .collect();
         drop(cache);
+        drop(last_active);
         *locked(&self.last_active) = active.clone();
         let _ = self.tx.send(Msg::SetClips(active));
     }
@@ -2200,5 +2244,74 @@ mod tests {
         assert!(sweep_plan(&directory.join("missing"), &live, 8).is_none());
 
         let _ = std::fs::remove_dir_all(&directory);
+    }
+
+    #[test]
+    fn media_stand_in_provides_unbroken_audio_when_filters_change() {
+        let dir = std::env::temp_dir().join(format!("concat-media-stand-in-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let source = rising_tone(&dir);
+        let mut filtered = tone_spec(&source, 0.0, 2.0);
+        filtered.chain = "lowpass=f=2000".to_owned();
+        let cache = cached(&filtered, &dir);
+
+        let mut changed_filter = filtered.clone();
+        changed_filter.chain = "equalizer=f=1000:t=q:w=1:g=3".to_owned();
+        changed_filter.source_start = 0.5;
+        changed_filter.duration = 1.0;
+
+        // Exact stand_in refuses different filter chain
+        assert!(super::stand_in(&cache, &changed_filter).is_none());
+
+        // media_stand_in allows it to keep playback alive while decoding new chain
+        let fallback = super::media_stand_in(&cache, &changed_filter);
+        assert!(fallback.is_some(), "media stand-in should bridge filter changes");
+        let (_, lead) = fallback.unwrap();
+        assert_eq!(lead, 24_000); // 0.5s * 48000
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn audio_filter_chains_decode_cleanly() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../concat-media/fixtures/tone-at-1s.ts");
+        let dir = std::env::temp_dir().join(format!("concat-test-filter-chains-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::create_dir_all(&dir);
+
+        let catalogue = concat_effects::Catalogue::builtin();
+        for package in catalogue.of_kind(concat_effects::Kind::Audio) {
+            for at in [concat_effects::At::Default, concat_effects::At::Min, concat_effects::At::Max] {
+                let params = package.params_at(at);
+                let applied = concat_project::model::AppliedFilter {
+                    id: package.id().to_owned(),
+                    params,
+                    enabled: true,
+                    keys: std::collections::BTreeMap::new(),
+                };
+                let chain = catalogue.audio_chain(&[applied]);
+                if chain.is_empty() {
+                    continue;
+                }
+                let mut spec = tone_spec(std::path::Path::new(path), 0.0, 1.0);
+                spec.chain = chain.clone();
+                let key = format!("test_{}_{:?}_{}", package.id(), at, super::decode_key(&spec));
+                let res = super::decode(&spec, &dir, &key, None);
+                assert!(res.is_ok(), "failed package {} at {:?}, chain '{}': {:?}", package.id(), at, chain, res.err());
+            }
+        }
+
+        // Also test presets
+        for preset in ["podcast", "crisp", "denoise_only", "isolate_only"] {
+            let filters = crate::clean_audio::preset_filters(preset);
+            let chain = catalogue.audio_chain(&filters);
+            let mut spec = tone_spec(std::path::Path::new(path), 0.0, 1.0);
+            spec.chain = chain.clone();
+            let key = format!("test_preset_{preset}_{}", super::decode_key(&spec));
+            let res = super::decode(&spec, &dir, &key, None);
+            assert!(res.is_ok(), "failed preset {preset}, chain '{chain}': {:?}", res.err());
+        }
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

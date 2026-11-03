@@ -128,8 +128,10 @@ fn audio_filter(options: &AudioOptions, origin: f64, late: f64) -> String {
         options
             .filters
             .iter()
+            .flat_map(|filter| filter.split(','))
+            .map(str::trim)
             .filter(|filter| !filter.is_empty())
-            .cloned(),
+            .map(str::to_owned),
     );
     parts.push(format!("aresample={}", options.rate));
     parts.push(format!(

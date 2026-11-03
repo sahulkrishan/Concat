@@ -17,4 +17,4 @@ step = 1
 unit = "%"
 
 [ffmpeg]
-chain = "highpass=f=80,afftdn=nf={fixed(0 - 25 - amount / 100 * 20, 1)}:nr={fixed(6 + amount / 100 * 18, 1)},deesser=i={fixed(amount / 100 * 0.5, 2)},acompressor=threshold={fixed(0.5 - amount / 100 * 0.3, 2)}:ratio={fixed(2 + amount / 100 * 2, 1)}:attack=15:release=120,alimiter=limit=0.95"
+chain = "highpass=f=80,afftdn=nf={fixed(0 - 25 - amount / 100 * 20, 1)}:nr={fixed(6 + amount / 100 * 18, 1)},deesser=i={fixed(amount / 100 * 0.5, 2)}:m=0.5:f=0.5:s=o,acompressor=threshold={fixed(0.5 - amount / 100 * 0.3, 2)}:ratio={fixed(2 + amount / 100 * 2, 1)}:attack=15:release=120,alimiter=limit=0.95"
