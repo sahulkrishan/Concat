@@ -2100,6 +2100,26 @@ fn start(project: Option<std::path::PathBuf>, smoke: bool) -> Result<(), slint::
     app.on_settings_download_source_changed(on_window!(|state, index: i32| {
         state.handle(Msg::Settings(SettingsMsg::DownloadSourceChanged(index)));
     }));
+    app.on_settings_stt_provider_changed(on_window!(|state, index: i32| {
+        state.handle(Msg::Settings(SettingsMsg::SttProviderChanged(index)));
+    }));
+    app.on_settings_elevenlabs_key_edited(on_window!(|state, key: SharedString| {
+        state.handle(Msg::Settings(SettingsMsg::ElevenLabsKeyEdited(
+            key.to_string(),
+        )));
+    }));
+    app.on_settings_elevenlabs_model_changed(on_window!(|state, index: i32| {
+        state.handle(Msg::Settings(SettingsMsg::ElevenLabsModelChanged(index)));
+    }));
+    app.on_settings_elevenlabs_diarize_changed(on_window!(|state, on: bool| {
+        state.handle(Msg::Settings(SettingsMsg::ElevenLabsDiarizeChanged(on)));
+    }));
+    app.on_settings_elevenlabs_audio_events_changed(on_window!(|state, on: bool| {
+        state.handle(Msg::Settings(SettingsMsg::ElevenLabsAudioEventsChanged(on)));
+    }));
+    app.on_settings_elevenlabs_verify_clicked(on_window!(|state| {
+        state.handle(Msg::Settings(SettingsMsg::ElevenLabsVerifyKey));
+    }));
     app.on_settings_download_base_edited(on_window!(|state, text: SharedString| {
         state.handle(Msg::Settings(SettingsMsg::DownloadBaseEdited(
             text.to_string(),
@@ -2216,6 +2236,9 @@ fn start(project: Option<std::path::PathBuf>, smoke: bool) -> Result<(), slint::
 
     app.on_captions_closed(on_window!(|state| {
         state.handle(Msg::Captions(CaptionsMsg::Close));
+    }));
+    app.on_captions_engine_changed(on_window!(|state, index: i32| {
+        state.handle(Msg::Captions(CaptionsMsg::EngineChanged(index)));
     }));
     app.on_captions_voice_toggled(on_window!(|state, on: bool| {
         state.handle(Msg::Captions(CaptionsMsg::VoiceToggled(on)));
@@ -2927,8 +2950,16 @@ mod tests {
     #[test]
     fn a_failed_save_keeps_the_real_session_and_its_edit() {
         let scratch = Scratch::new("session");
-        let info = projects::create(&scratch.location(), "Closing", 1920, 1080, 30, 1, [0, 0, 0, 255])
-            .expect("creates the project");
+        let info = projects::create(
+            &scratch.location(),
+            "Closing",
+            1920,
+            1080,
+            30,
+            1,
+            [0, 0, 0, 255],
+        )
+        .expect("creates the project");
         let manifest = projects::manifest_path(Path::new(&info.path));
 
         // A real session, saved once; then an edit that lives in memory
@@ -3005,8 +3036,16 @@ mod tests {
     #[test]
     fn a_delayed_autosave_cannot_replace_the_close_snapshot() {
         let scratch = Scratch::new("ordered-close");
-        let info = projects::create(&scratch.location(), "Ordered", 1920, 1080, 30, 1, [0, 0, 0, 255])
-            .expect("creates the project");
+        let info = projects::create(
+            &scratch.location(),
+            "Ordered",
+            1920,
+            1080,
+            30,
+            1,
+            [0, 0, 0, 255],
+        )
+        .expect("creates the project");
         let mut session = Session::open_info(&info).expect("opens the session");
         let (old_path, old_document) = session.prepare_save(None);
         let old_ticket = projects::ticket();

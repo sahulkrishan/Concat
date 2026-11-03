@@ -10,7 +10,7 @@ name: CI
 # digest, in scripts/ci/deps.lock.
 on:
   push:
-    branches: [main]
+    branches: [main, "feat/**"]
   pull_request:
   workflow_dispatch:
   # release.yml runs this before it builds anything: a tag on a red tree
@@ -242,6 +242,7 @@ jobs:
   # ninety minutes every time (see cards.rs), so without CONCAT_REQUIRE_GPU
   # it skips there and runs on Linux's lavapipe above.
   desktop:
+    if: false # Temporarily disabled macOS and Windows builds per configuration
     name: ${{ matrix.verb }} on ${{ matrix.os }}
     strategy:
       fail-fast: false

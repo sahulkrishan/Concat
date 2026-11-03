@@ -33,6 +33,8 @@ use std::sync::{Arc, Mutex};
 use concat_host::{AppDirs, SingleFlight};
 use concat_media::{AudioDecoder, AudioOptions, SampleFormat};
 use serde::{Deserialize, Serialize};
+
+use crate::stt::WordSegment;
 use whisper_rs::{
     FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperSegment,
     WhisperState, WhisperVadContext, WhisperVadContextParams, WhisperVadParams,
@@ -157,16 +159,16 @@ use crate::{DownloadProgress, JobStage};
 
 /// One downloadable Whisper model. Sizes are approximate, for progress bars
 /// when the server declines to send a Content-Length.
-struct KnownModel {
-    id: &'static str,
-    label: &'static str,
+pub(crate) struct KnownModel {
+    pub(crate) id: &'static str,
+    pub(crate) label: &'static str,
     /// One line for the settings row: what this size trades away.
-    blurb: &'static str,
-    approx_bytes: u64,
+    pub(crate) blurb: &'static str,
+    pub(crate) approx_bytes: u64,
     /// What the finished file must hash to; a download with nothing to
     /// check against is refused. See [`concat_host::models`].
-    sha256: &'static str,
-    english_only: bool,
+    pub(crate) sha256: &'static str,
+    pub(crate) english_only: bool,
 }
 
 /// The models the settings panel offers, fastest first.
@@ -174,7 +176,7 @@ struct KnownModel {
 /// All from the official `ggerganov/whisper.cpp` conversions. Nothing bigger
 /// than `small`: `medium` is 1.5 GB and minutes-per-minute on CPU, which is
 /// the opposite of what this feature is for.
-const KNOWN_MODELS: &[KnownModel] = &[
+pub(crate) const KNOWN_MODELS: &[KnownModel] = &[
     KnownModel {
         id: "tiny.en",
         label: "Tiny (English)",
@@ -560,7 +562,7 @@ pub struct TranscriberStatus {
 }
 
 /// One caption, in seconds relative to the transcribed window's start.
-#[derive(Serialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Segment {
     /// Seconds from the window's start.
@@ -569,6 +571,36 @@ pub struct Segment {
     pub end: f64,
     /// What was said.
     pub text: String,
+    /// Word-level tokens for animations and karaoke.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub words: Vec<WordSegment>,
+}
+
+impl Segment {
+    /// Create a new caption segment without individual word timestamps.
+    pub fn new(start: f64, end: f64, text: impl Into<String>) -> Self {
+        Self {
+            start,
+            end,
+            text: text.into(),
+            words: Vec::new(),
+        }
+    }
+
+    /// Create a new caption segment with attached word-level timestamps.
+    pub fn with_words(
+        start: f64,
+        end: f64,
+        text: impl Into<String>,
+        words: Vec<WordSegment>,
+    ) -> Self {
+        Self {
+            start,
+            end,
+            text: text.into(),
+            words,
+        }
+    }
 }
 
 /// What to transcribe.
@@ -655,7 +687,7 @@ impl Recipe {
 /// with whisper's fallback reads an unsure window again at higher
 /// temperatures, five candidates at a time (`best_of`), which is where
 /// beam search's care pays off, and only where it is needed.
-
+///
 /// The transcriber: the one transcription and the one model download that
 /// can run at a time, and the model kept loaded between runs.
 pub struct Transcriber {
@@ -1054,7 +1086,12 @@ fn keep_segment(start: f64, end: f64, text: String) -> Option<Segment> {
     if direction || !text.chars().any(char::is_alphanumeric) {
         return None;
     }
-    (end > start).then_some(Segment { start, end, text })
+    (end > start).then_some(Segment {
+        start,
+        end,
+        text,
+        words: Vec::new(),
+    })
 }
 
 /// Whisper's own lines for what is not speech: a window it gives better
@@ -1113,7 +1150,9 @@ fn detect_language(
         if sum.is_empty() {
             sum = odds;
         } else {
-            sum.iter_mut().zip(odds).for_each(|(sum, odds)| *sum += odds);
+            sum.iter_mut()
+                .zip(odds)
+                .for_each(|(sum, odds)| *sum += odds);
         }
         probes += 1;
     }
@@ -1133,8 +1172,12 @@ fn detect_language(
         name(ranked[2].0),
         ranked[2].1,
     );
-    whisper_rs::get_lang_str(ranked[0].0)
-        .ok_or_else(|| format!("whisper heard language {}, which it cannot name", ranked[0].0))
+    whisper_rs::get_lang_str(ranked[0].0).ok_or_else(|| {
+        format!(
+            "whisper heard language {}, which it cannot name",
+            ranked[0].0
+        )
+    })
 }
 
 /// A line whisper made up of silence: one from a window it took for
@@ -1441,6 +1484,7 @@ mod tests {
             start,
             end: start + 1.0,
             text: text.to_owned(),
+            words: Vec::new(),
         };
         let kept = drop_repeats(vec![
             line(0.0, "Yes."),

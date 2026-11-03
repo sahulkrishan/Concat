@@ -616,7 +616,11 @@ fn colour_about(frame: &concat_core::frame::Frame, u: f64, v: f64) -> Option<[u8
     if count == 0.0 {
         return None;
     }
-    Some(sum.map(|total| ((total / count).powf(1.0 / 2.4) * 255.0).round().clamp(0.0, 255.0) as u8))
+    Some(sum.map(|total| {
+        ((total / count).powf(1.0 / 2.4) * 255.0)
+            .round()
+            .clamp(0.0, 255.0) as u8
+    }))
 }
 
 /// Whether a colour has a channel standing clear of the other two - the
@@ -1559,11 +1563,7 @@ fn inspector_family(kind: model::ClipKind) -> u8 {
 /// package at the same turn of it, so the second blur of the clip shown is
 /// the second blur of each other clip of a batch. None when that clip has
 /// no such link, and the edit passes it by.
-fn peer_link(
-    chain: &[AppliedFilter],
-    index: usize,
-    peer: &[AppliedFilter],
-) -> Option<usize> {
+fn peer_link(chain: &[AppliedFilter], index: usize, peer: &[AppliedFilter]) -> Option<usize> {
     let id = &chain.get(index)?.id;
     let turn = chain[..index]
         .iter()
@@ -2117,9 +2117,10 @@ fn chain_rows(chain: &[AppliedFilter]) -> (Vec<AppliedEntryData>, Vec<AppliedPar
         // a row of segments (see `chain_choices`), and a wheel or a curve is
         // drawn apart (see `chain_grading`).
         for param in package.manifest.params.iter().filter(|param| {
-            !param.kind.is_compound() && param.kind != ParamType::Color && param.kind != ParamType::Enum
-        })
-        {
+            !param.kind.is_compound()
+                && param.kind != ParamType::Color
+                && param.kind != ParamType::Enum
+        }) {
             let step = if param.step > 0.0 {
                 param.step
             } else {
@@ -12138,17 +12139,20 @@ impl Studio {
 
         // The speech sheets, and the lists they choose from.
         let transcribers = installed(&self.settings.transcribers);
-        sync(
-            &models.caption_models,
-            transcribers
-                .iter()
-                .map(|model| SharedString::from(model.name.as_str()))
-                .collect(),
-        );
-        sync(
-            &models.caption_languages,
-            self.captions.language_rows(self),
-        );
+        let caption_models: Vec<SharedString> =
+            if self.prefs.stt_provider.as_deref() == Some("elevenlabs") {
+                vec![
+                    SharedString::from("Scribe V2 (General, 90+ languages)"),
+                    SharedString::from("Scribe V2 Medical (Clinical & Medical)"),
+                ]
+            } else {
+                transcribers
+                    .iter()
+                    .map(|model| SharedString::from(model.name.as_str()))
+                    .collect()
+            };
+        sync(&models.caption_models, caption_models);
+        sync(&models.caption_languages, self.captions.language_rows(self));
         app.set_captions(self.captions.data(self));
         let voices = installed(&self.settings.voices);
         sync(
@@ -13351,9 +13355,8 @@ fn edit_point(spans: &[(f64, f64)], playhead: f32, rate: f32, forward: bool) -> 
 mod tests {
     use super::{
         Command, Footprint, Studio, adjust_key_names, chain_choices, chain_colours, chain_rows,
-        colour_about, custom_frame, has_hue,
-        custom_rate, fps_of, grading_rows, home_folder, key_commands, packed, place_in, shown,
-        wheel_partners, write_keyable,
+        colour_about, custom_frame, custom_rate, fps_of, grading_rows, has_hue, home_folder,
+        key_commands, packed, place_in, shown, wheel_partners, write_keyable,
     };
 
     /// Up and Down walk the cuts on every lane in order, a playhead a
@@ -13646,7 +13649,10 @@ mod tests {
         let mut link = AppliedFilter::new("concat.chroma-key");
         let (_, knobs) = chain_rows(std::slice::from_ref(&link));
         assert!(knobs.iter().all(|knob| knob.key != "color"), "no slider");
-        assert!(knobs.iter().all(|knob| knob.key != "view"), "a choice, not a slider");
+        assert!(
+            knobs.iter().all(|knob| knob.key != "view"),
+            "a choice, not a slider"
+        );
         assert!(knobs.iter().any(|knob| knob.key == "strength"));
         let colours = chain_colours(std::slice::from_ref(&link), true, None);
         assert_eq!(colours.len(), 1);

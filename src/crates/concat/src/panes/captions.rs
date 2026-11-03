@@ -51,6 +51,8 @@ pub enum CaptionsMsg {
     /// A clip's menu: the sheet on that clip's voice.
     OpenOnClip(String),
     Close,
+    /// 0 Local Whisper, 1 ElevenLabs Scribe V2.
+    EngineChanged(i32),
     /// The "Use Sample Voice" switch.
     VoiceToggled(bool),
     /// Row in the list of clips with sound.
@@ -152,6 +154,12 @@ impl CaptionsPane {
             }
             CaptionsMsg::OpenOnClip(id) => self.open_on(studio, Some(id), true),
             CaptionsMsg::Close => self.open = false,
+            CaptionsMsg::EngineChanged(index) => {
+                let provider = if index == 1 { "elevenlabs" } else { "whisper" };
+                studio.prefs.stt_provider = Some(provider.to_string());
+                studio.prefs.save(&studio.host.dirs);
+                self.model = 0;
+            }
             CaptionsMsg::VoiceToggled(on) => {
                 self.from_voice = on;
                 self.message.clear();
@@ -409,8 +417,17 @@ impl CaptionsPane {
     /// menu asked for its voice (`voice`), in which case a clip without
     /// sound falls to the first clip that has some.
     fn open_on(&mut self, studio: &Studio, clip: Option<String>, voice: bool) {
-        let installed = installed(&studio.settings.transcribers);
-        let model = installed.iter().position(|model| model.active).unwrap_or(0);
+        let is_elevenlabs = studio.prefs.stt_provider.as_deref() == Some("elevenlabs");
+        let model = if is_elevenlabs {
+            if studio.prefs.elevenlabs_default_model.as_deref() == Some("scribe_v2_medical") {
+                1
+            } else {
+                0
+            }
+        } else {
+            let installed = installed(&studio.settings.transcribers);
+            installed.iter().position(|model| model.active).unwrap_or(0)
+        };
         let sources = sources(studio);
         let sounding = clip.filter(|id| sources.iter().any(|source| &source.id == id));
         let from_voice = voice || sounding.is_some();
@@ -501,6 +518,82 @@ impl CaptionsPane {
             self.message = t("captions.clipHasNoFile");
             return;
         };
+
+        if studio.prefs.stt_provider.as_deref() == Some("elevenlabs") {
+            let api_key = studio
+                .prefs
+                .elevenlabs_api_key
+                .as_deref()
+                .map(str::trim)
+                .unwrap_or_default();
+            if api_key.is_empty() {
+                self.message =
+                    "Please configure your ElevenLabs API key in Settings > Transcriber".to_owned();
+                return;
+            }
+            let chosen_model = if self.model == 1 {
+                "scribe_v2_medical"
+            } else {
+                "scribe_v2"
+            };
+            let router = concat_speech::LanguageModelRouter {
+                default_model: chosen_model.to_string(),
+                language_map: studio.prefs.elevenlabs_language_models.clone(),
+            };
+            let model_id = router.resolve(self.language.as_deref()).to_owned();
+            let provider = concat_speech::ElevenLabsProvider::new(api_key);
+            let diarize = studio.prefs.elevenlabs_diarize;
+            let audio_events = studio.prefs.elevenlabs_audio_events;
+            let lang = self.language.clone();
+
+            let window = clip.duration * clip.speed;
+            self.pace = Pace::new(vec![
+                (Stage::Reading, 0.2 + window as f32 / 400.0),
+                (Stage::Working, 2.0),
+            ]);
+            self.subject = Some(Subject {
+                start: clip.start,
+                speed: clip.speed,
+                look: self.look(),
+                model: model_id.clone(),
+                windows: 1.0,
+            });
+            self.running = true;
+            self.message.clear();
+            let media_path = media.path.clone();
+            let audio_stream = clip.audio_stream;
+            let source_start = clip.source_start;
+
+            spawn_in_project(
+                move || {
+                    let samples = concat_speech::AudioPreprocessor::extract_mono_samples(
+                        &media_path,
+                        source_start,
+                        window,
+                        audio_stream,
+                    )?;
+                    let preprocessor = concat_speech::AudioPreprocessor::for_provider(&provider);
+                    let chunks = preprocessor.prepare_chunks(&samples);
+                    let cancel = std::sync::atomic::AtomicBool::new(false);
+                    let req = concat_speech::ProviderRequest {
+                        audio_bytes: Vec::new(),
+                        filename: "audio.wav".to_owned(),
+                        mime_type: "audio/wav".to_owned(),
+                        model_id,
+                        language: lang,
+                        tag_audio_events: audio_events,
+                        diarize,
+                        num_speakers: None,
+                    };
+                    let result =
+                        preprocessor.transcribe_and_stitch(&provider, &chunks, &req, &cancel)?;
+                    Ok(result.segments)
+                },
+                |studio, _, _, result| studio.handle(Msg::Captions(CaptionsMsg::Finished(result))),
+            );
+            return;
+        }
+
         let Some((model, megabytes)) = installed(&studio.settings.transcribers)
             .get(self.model)
             .map(|model| (model.id.clone(), model.megabytes))
@@ -564,6 +657,9 @@ impl CaptionsPane {
 
     /// Whether the model the sheet has chosen hears only English.
     fn english_only(&self, studio: &Studio) -> bool {
+        if studio.prefs.stt_provider.as_deref() == Some("elevenlabs") {
+            return false;
+        }
         installed(&studio.settings.transcribers)
             .get(self.model)
             .is_some_and(|model| concat_speech::transcribe::english_only(&model.id))
@@ -608,6 +704,11 @@ impl CaptionsPane {
         CaptionsSheetData {
             open: self.open,
             from_voice: self.from_voice,
+            engine: if studio.prefs.stt_provider.as_deref() == Some("elevenlabs") {
+                1
+            } else {
+                0
+            },
             sources: std::rc::Rc::new(slint::VecModel::from(labels)).into(),
             source,
             text: self.text.as_str().into(),
@@ -631,7 +732,16 @@ impl CaptionsPane {
                 _ => t("captions.readingTheSound"),
             }
             .into(),
-            ready: !installed(&studio.settings.transcribers).is_empty(),
+            ready: if studio.prefs.stt_provider.as_deref() == Some("elevenlabs") {
+                studio
+                    .prefs
+                    .elevenlabs_api_key
+                    .as_deref()
+                    .map(str::trim)
+                    .is_some_and(|k| !k.is_empty())
+            } else {
+                !installed(&studio.settings.transcribers).is_empty()
+            },
             message: self.message.as_str().into(),
         }
     }

@@ -395,6 +395,12 @@ export component App inherits Window {
     callback settings-version-chosen(index: int);
     callback settings-install-version();
     callback settings-install-cancel();
+    callback settings-stt-provider-changed(index: int);
+    callback settings-elevenlabs-key-edited(key: string);
+    callback settings-elevenlabs-model-changed(index: int);
+    callback settings-elevenlabs-diarize-changed(on: bool);
+    callback settings-elevenlabs-audio-events-changed(on: bool);
+    callback settings-elevenlabs-verify-clicked();
     /// The Shortcuts page: a row asked to capture the next keys, and the
     /// two ways out of a change — put one row back, or put them all back.
     callback settings-shortcut-capture(id: string);
@@ -431,6 +437,7 @@ export component App inherits Window {
     in property <[string]> caption-languages;
     callback captions-closed();
     callback captions-voice-toggled(on: bool);
+    callback captions-engine-changed(index: int);
     callback captions-source-changed(index: int);
     callback captions-text-edited(text: string);
     callback captions-model-changed(index: int);
@@ -855,6 +862,7 @@ export component App inherits Window {
 
             closed => { root.captions-closed(); }
             voice-toggled(on) => { root.captions-voice-toggled(on); }
+            engine-changed(index) => { root.captions-engine-changed(index); }
             source-changed(index) => { root.captions-source-changed(index); }
             text-edited(text) => { root.captions-text-edited(text); }
             model-changed(index) => { root.captions-model-changed(index); }
@@ -1037,6 +1045,12 @@ export component App inherits Window {
         version-chosen(index) => { root.settings-version-chosen(index); }
         install-version => { root.settings-install-version(); }
         install-cancel => { root.settings-install-cancel(); }
+        stt-provider-changed(index) => { root.settings-stt-provider-changed(index); }
+        elevenlabs-key-edited(key) => { root.settings-elevenlabs-key-edited(key); }
+        elevenlabs-model-changed(index) => { root.settings-elevenlabs-model-changed(index); }
+        elevenlabs-diarize-changed(on) => { root.settings-elevenlabs-diarize-changed(on); }
+        elevenlabs-audio-events-changed(on) => { root.settings-elevenlabs-audio-events-changed(on); }
+        elevenlabs-verify-clicked => { root.settings-elevenlabs-verify-clicked(); }
         model-activated(id) => { root.model-activated(id); }
         model-download(id) => { root.model-download(id); }
         model-cancel(id) => { root.model-cancel(id); }
