@@ -2104,7 +2104,9 @@ fn start(project: Option<std::path::PathBuf>, smoke: bool) -> Result<(), slint::
         state.handle(Msg::Settings(SettingsMsg::SttProviderChanged(index)));
     }));
     app.on_settings_elevenlabs_key_edited(on_window!(|state, key: SharedString| {
-        state.handle(Msg::Settings(SettingsMsg::ElevenLabsKeyEdited(key.to_string())));
+        state.handle(Msg::Settings(SettingsMsg::ElevenLabsKeyEdited(
+            key.to_string(),
+        )));
     }));
     app.on_settings_elevenlabs_model_changed(on_window!(|state, index: i32| {
         state.handle(Msg::Settings(SettingsMsg::ElevenLabsModelChanged(index)));
@@ -2942,8 +2944,16 @@ mod tests {
     #[test]
     fn a_failed_save_keeps_the_real_session_and_its_edit() {
         let scratch = Scratch::new("session");
-        let info = projects::create(&scratch.location(), "Closing", 1920, 1080, 30, 1, [0, 0, 0, 255])
-            .expect("creates the project");
+        let info = projects::create(
+            &scratch.location(),
+            "Closing",
+            1920,
+            1080,
+            30,
+            1,
+            [0, 0, 0, 255],
+        )
+        .expect("creates the project");
         let manifest = projects::manifest_path(Path::new(&info.path));
 
         // A real session, saved once; then an edit that lives in memory
@@ -3020,8 +3030,16 @@ mod tests {
     #[test]
     fn a_delayed_autosave_cannot_replace_the_close_snapshot() {
         let scratch = Scratch::new("ordered-close");
-        let info = projects::create(&scratch.location(), "Ordered", 1920, 1080, 30, 1, [0, 0, 0, 255])
-            .expect("creates the project");
+        let info = projects::create(
+            &scratch.location(),
+            "Ordered",
+            1920,
+            1080,
+            30,
+            1,
+            [0, 0, 0, 255],
+        )
+        .expect("creates the project");
         let mut session = Session::open_info(&info).expect("opens the session");
         let (old_path, old_document) = session.prepare_save(None);
         let old_ticket = projects::ticket();

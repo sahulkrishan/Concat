@@ -18,8 +18,8 @@ use std::sync::atomic::AtomicBool;
 
 pub use elevenlabs::ElevenLabsProvider;
 pub use preprocessor::AudioPreprocessor;
-pub use whisper::WhisperProvider;
 use serde::{Deserialize, Serialize};
+pub use whisper::WhisperProvider;
 
 use crate::transcribe::Segment;
 
@@ -157,7 +157,11 @@ impl LanguageModelRouter {
     }
 
     /// Add a language mapping.
-    pub fn with_mapping(mut self, language: impl Into<String>, model_id: impl Into<String>) -> Self {
+    pub fn with_mapping(
+        mut self,
+        language: impl Into<String>,
+        model_id: impl Into<String>,
+    ) -> Self {
         self.language_map
             .insert(language.into().to_ascii_lowercase(), model_id.into());
         self

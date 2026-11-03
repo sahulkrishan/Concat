@@ -3,15 +3,13 @@
 
 //! Local Whisper implementation of [`SpeechToTextProvider`].
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use concat_host::AppDirs;
 
-use super::{
-    ModelDescriptor, ProviderRequest, SpeechToTextProvider, TranscriptionResult,
-};
-use crate::transcribe::{TranscribeRequest, Transcriber, KNOWN_MODELS};
+use super::{ModelDescriptor, ProviderRequest, SpeechToTextProvider, TranscriptionResult};
+use crate::transcribe::{KNOWN_MODELS, TranscribeRequest, Transcriber};
 
 /// Speech-to-text provider running Whisper locally in-process.
 #[derive(Clone)]
@@ -98,11 +96,9 @@ impl SpeechToTextProvider for WhisperProvider {
         };
 
         // Run transcription
-        let segments_res = self.transcriber.transcribe(
-            &self.dirs,
-            &transcribe_req,
-            |_| {},
-        );
+        let segments_res = self
+            .transcriber
+            .transcribe(&self.dirs, &transcribe_req, |_| {});
 
         let _ = std::fs::remove_file(&temp_file);
 

@@ -99,7 +99,9 @@ impl AudioPreprocessor {
 
         let max_samples_by_bytes = self.max_payload_bytes.saturating_sub(44) / 2; // 16-bit mono = 2 bytes/sample
         let max_samples_by_time = (self.chunk_duration_secs * SPEECH_SAMPLE_RATE as f64) as usize;
-        let chunk_limit = max_samples_by_bytes.min(max_samples_by_time).max(SPEECH_SAMPLE_RATE as usize);
+        let chunk_limit = max_samples_by_bytes
+            .min(max_samples_by_time)
+            .max(SPEECH_SAMPLE_RATE as usize);
 
         // If entire file fits comfortably within limits, return a single chunk
         if total_samples <= chunk_limit {

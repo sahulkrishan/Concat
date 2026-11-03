@@ -443,7 +443,11 @@ impl SettingsPane {
                 studio.prefs.save(&studio.host.dirs);
             }
             SettingsMsg::ElevenLabsModelChanged(index) => {
-                let model = if index == 1 { "scribe_v2_medical" } else { "scribe_v2" };
+                let model = if index == 1 {
+                    "scribe_v2_medical"
+                } else {
+                    "scribe_v2"
+                };
                 studio.prefs.elevenlabs_default_model = Some(model.to_owned());
                 studio.prefs.save(&studio.host.dirs);
             }

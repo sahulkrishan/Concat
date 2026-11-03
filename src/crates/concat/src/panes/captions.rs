@@ -510,7 +510,8 @@ impl CaptionsPane {
                 .map(str::trim)
                 .unwrap_or_default();
             if api_key.is_empty() {
-                self.message = "Please configure your ElevenLabs API key in Settings > Transcriber".to_owned();
+                self.message =
+                    "Please configure your ElevenLabs API key in Settings > Transcriber".to_owned();
                 return;
             }
             let router = concat_speech::LanguageModelRouter {
@@ -566,7 +567,8 @@ impl CaptionsPane {
                         diarize,
                         num_speakers: None,
                     };
-                    let result = preprocessor.transcribe_and_stitch(&provider, &chunks, &req, &cancel)?;
+                    let result =
+                        preprocessor.transcribe_and_stitch(&provider, &chunks, &req, &cancel)?;
                     Ok(result.segments)
                 },
                 |studio, _, _, result| studio.handle(Msg::Captions(CaptionsMsg::Finished(result))),

@@ -92,16 +92,28 @@ impl SpeechToTextProvider for ElevenLabsProvider {
 
         let key = self.api_key.trim();
         if key.is_empty() {
-            return Err("ElevenLabs API key is missing. Please configure it in Settings > Transcriber".to_owned());
+            return Err(
+                "ElevenLabs API key is missing. Please configure it in Settings > Transcriber"
+                    .to_owned(),
+            );
         }
 
         let url = format!("{}/v1/speech-to-text", self.base_url.trim_end_matches('/'));
-        let boundary = format!("----ConcatSTTBoundary{:x}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0));
+        let boundary = format!(
+            "----ConcatSTTBoundary{:x}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        );
         let body = build_multipart_body(request, &boundary)?;
 
         let response = ureq::post(&url)
             .set("xi-api-key", key)
-            .set("Content-Type", &format!("multipart/form-data; boundary={boundary}"))
+            .set(
+                "Content-Type",
+                &format!("multipart/form-data; boundary={boundary}"),
+            )
             .timeout(std::time::Duration::from_secs(300))
             .send_bytes(&body);
 
@@ -117,7 +129,9 @@ impl SpeechToTextProvider for ElevenLabsProvider {
                     .map_err(|e| format!("failed to read response body: {e}"))?;
 
                 if status != 200 {
-                    return Err(format!("ElevenLabs API returned HTTP {status}: {body_text}"));
+                    return Err(format!(
+                        "ElevenLabs API returned HTTP {status}: {body_text}"
+                    ));
                 }
 
                 parse_elevenlabs_response(&body_text)
@@ -127,18 +141,15 @@ impl SpeechToTextProvider for ElevenLabsProvider {
                 let message = extract_error_message(&err_text).unwrap_or(err_text);
                 Err(format!("ElevenLabs API error (HTTP {status}): {message}"))
             }
-            Err(ureq::Error::Transport(transport)) => {
-                Err(format!("Network error connecting to ElevenLabs: {transport}"))
-            }
+            Err(ureq::Error::Transport(transport)) => Err(format!(
+                "Network error connecting to ElevenLabs: {transport}"
+            )),
         }
     }
 }
 
 /// Builds a `multipart/form-data` payload in memory.
-pub fn build_multipart_body(
-    request: &ProviderRequest,
-    boundary: &str,
-) -> Result<Vec<u8>, String> {
+pub fn build_multipart_body(request: &ProviderRequest, boundary: &str) -> Result<Vec<u8>, String> {
     let mut body = Vec::new();
 
     // Helper to append a text field
@@ -171,7 +182,11 @@ pub fn build_multipart_body(
     append_field(
         &mut body,
         "tag_audio_events",
-        if request.tag_audio_events { "true" } else { "false" },
+        if request.tag_audio_events {
+            "true"
+        } else {
+            "false"
+        },
     );
 
     // diarize
@@ -394,7 +409,11 @@ pub fn group_words_into_segments(words: &[WordSegment]) -> Vec<Segment> {
 fn build_segment_text(words: &[WordSegment]) -> String {
     let mut text = String::new();
     for (i, w) in words.iter().enumerate() {
-        if i > 0 && !w.text.starts_with(['.', ',', '!', '?', ';', ':', '\'', '’']) {
+        if i > 0
+            && !w
+                .text
+                .starts_with(['.', ',', '!', '?', ';', ':', '\'', '’'])
+        {
             text.push(' ');
         }
         text.push_str(&w.text);
@@ -479,7 +498,10 @@ mod tests {
         );
 
         let err3 = r#"{"detail": [{"loc": ["file"], "msg": "field required"}]}"#;
-        assert_eq!(extract_error_message(err3).as_deref(), Some("field required"));
+        assert_eq!(
+            extract_error_message(err3).as_deref(),
+            Some("field required")
+        );
     }
 
     #[test]
@@ -557,7 +579,9 @@ mod tests {
             num_speakers: None,
         };
 
-        let result = provider.transcribe(&req, &cancel).expect("transcription succeeds");
+        let result = provider
+            .transcribe(&req, &cancel)
+            .expect("transcription succeeds");
         assert_eq!(result.text, "Hello world from ElevenLabs");
         assert_eq!(result.words.len(), 4);
         assert_eq!(result.segments.len(), 1);
