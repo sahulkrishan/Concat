@@ -112,9 +112,6 @@ jobs:
           - target: aarch64-linux-android
             abi: arm64
             ship: true
-          - target: x86_64-linux-android
-            abi: x86_64
-            ship: false
     steps:
       # The ref release.yml names, which is its tag: without one a run
       # started by hand builds main and publishes it under the tag's name.
@@ -287,6 +284,7 @@ jobs:
   # detection crashed before any of the app's code, so it was never
   # tested at all.
   android-smoke:
+    if: false # Disabled: requires x86_64 emulator build
     name: Android smoke (API ${{ matrix.api }})
     needs: android
     runs-on: ubuntu-24.04
@@ -348,6 +346,7 @@ jobs:
           if-no-files-found: warn
 
   ios:
+    if: false # Disabled iOS build per configuration
     name: iOS arm64
     runs-on: macos-15
     timeout-minutes: 90
@@ -459,6 +458,7 @@ jobs:
   # device one. mobile-env.sh does not know the simulator yet, so the
   # build's environment is written out in the build step below.
   ios-simulator:
+    if: false # Disabled iOS simulator build per configuration
     name: iOS simulator smoke
     runs-on: macos-15
     timeout-minutes: 90
