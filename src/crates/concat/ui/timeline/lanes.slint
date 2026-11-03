@@ -7,6 +7,7 @@ import { Fmt, Payload } from "../util.slint";
 import { Glyph, Icon } from "../icons.slint";
 import { ClipData, ClipKind, DropData, TimelineTool, TrackData } from "model.slint";
 import { ContextMenu, MenuItemData } from "../primitives/context-menu.slint";
+import { I18n } from "../i18n.slint";
 
 // The lanes: the ruler, the banded track stack, the clips on it, the playhead
 // and the two band gestures.
@@ -304,6 +305,28 @@ component Clip inherits Rectangle {
             background: Theme.wave-centre;
         }
 
+        // When audio waveform is loading: placeholder informing user that the audio track is loading
+        if (root.item.wave == "" || root.item.audio-loading) && !root.banded && (root.item.kind == ClipKind.audio || root.item.kind == ClipKind.sound-layer) && root.width > 20px: HorizontalLayout {
+            x: 0;
+            y: 0;
+            width: parent.width;
+            height: parent.height;
+            alignment: center;
+            spacing: 6px;
+
+            Icon {
+                glyph: Glyph.waveform;
+                size: Math.min(16px, parent.height - 4px);
+                tint: Theme.wave.with-alpha(0.45);
+            }
+            if root.width > 90px: Text {
+                text: I18n.t("timeline.audioLoading");
+                color: Theme.wave.with-alpha(0.65);
+                font-size: Theme.fs-xs;
+                vertical-alignment: center;
+            }
+        }
+
         // The filmstrip. Tiles are the strip's frames at the body's height,
         // and each tile shows the frame under the midpoint of as much of it
         // as is in the clip: the clip covers `span` of the footage from
@@ -410,6 +433,27 @@ component Clip inherits Rectangle {
                 tint: Theme.wave-video;
             }
 
+            if (root.item.wave == "" || root.item.audio-loading) && root.width > 30px: HorizontalLayout {
+                x: 0;
+                y: 1px;
+                width: parent.width;
+                height: parent.height - 1px;
+                alignment: center;
+                spacing: 4px;
+
+                Icon {
+                    glyph: Glyph.waveform;
+                    size: Math.min(10px, parent.height - 2px);
+                    tint: Theme.wave-video.with-alpha(0.5);
+                }
+                if root.width > 100px: Text {
+                    text: I18n.t("timeline.audioLoading");
+                    color: Theme.wave-video.with-alpha(0.7);
+                    font-size: 8px;
+                    vertical-alignment: center;
+                }
+            }
+
             // The floor the bars stand on.
             Rectangle {
                 x: 0;
@@ -471,7 +515,8 @@ component Clip inherits Rectangle {
             y: 0;
             width: parent.width - root.text-x - 7px
                 - (root.item.fx && root.width > 60px ? root.chip-w + 6px : 0px)
-                - (root.item.clean-audio-progress >= 0 && root.width > 80px ? root.chip-w + 24px : 0px);
+                - (root.item.clean-audio-progress >= 0 && root.width > 80px ? root.chip-w + 24px : 0px)
+                - (root.item.audio-loading && root.item.clean-audio-progress < 0 && root.width > 90px ? root.chip-w + 28px : 0px);
             height: parent.height;
             text: root.item.name;
             color: Theme.clip-ink;
@@ -512,6 +557,32 @@ component Clip inherits Rectangle {
                 font-weight: 700;
                 horizontal-alignment: center;
                 vertical-alignment: center;
+            }
+        }
+
+        // An audio loading indicator badge in header when audio track is decoding/loading
+        if root.item.audio-loading && root.item.clean-audio-progress < 0 && root.width > 90px: Rectangle {
+            x: parent.width - self.width - 4px - (root.item.fx && root.width > 60px ? root.chip-w + 4px : 0px);
+            y: (parent.height - self.height) / 2;
+            width: Math.max(root.chip-w + 24px, 46px);
+            height: root.chip;
+            border-radius: Theme.r-xs;
+            background: Theme.clip-chip;
+
+            HorizontalLayout {
+                spacing: 3px;
+                alignment: center;
+                Icon {
+                    glyph: Glyph.waveform;
+                    size: 8px;
+                    tint: Theme.clip-ink;
+                }
+                Text {
+                    text: I18n.t("timeline.audioLoadingShort");
+                    color: Theme.clip-ink;
+                    font-size: 8px;
+                    vertical-alignment: center;
+                }
             }
         }
 

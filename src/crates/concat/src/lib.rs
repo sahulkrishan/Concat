@@ -1659,6 +1659,9 @@ fn start(project: Option<std::path::PathBuf>, smoke: bool) -> Result<(), slint::
     editor.on_clip_clean_audio_toggles(on_window!(|state, noise: bool, vocal: bool| {
         state.clip_clean_audio_toggles(noise, vocal);
     }));
+    editor.on_clip_clean_audio_param(on_window!(|state, key: SharedString, value: f32| {
+        state.clip_clean_audio_param(key.as_str(), value);
+    }));
     editor.on_transition_remove(on_window!(|state| {
         state.remove_transition();
     }));

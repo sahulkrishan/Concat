@@ -1198,6 +1198,16 @@ pub struct Studio {
     clean_audio_remove_noise: bool,
     /// Whether vocal isolation is enabled in clean audio.
     clean_audio_isolate_vocals: bool,
+    /// Noise attenuation level in dB (10.0 to 100.0 dB).
+    clean_audio_noise_attenuation: f32,
+    /// Post-filter over-attenuation beta.
+    clean_audio_post_filter_beta: f32,
+    /// Vocal isolation strength percentage (0.0 to 100.0).
+    clean_audio_vocal_strength: f32,
+    /// Vocal clarity percentage (0.0 to 100.0).
+    clean_audio_vocal_clarity: f32,
+    /// Vocal dereverberation percentage (0.0 to 100.0).
+    clean_audio_vocal_dereverb: f32,
     /// A selection being rendered into one clip, with its own cancel flag.
     merge_job: Option<MergeJob>,
     /// The smart stroke being read, by the same name, while one is.
@@ -2665,6 +2675,11 @@ impl Studio {
             clean_audio_preset: "podcast".to_string(),
             clean_audio_remove_noise: true,
             clean_audio_isolate_vocals: false,
+            clean_audio_noise_attenuation: 45.0,
+            clean_audio_post_filter_beta: 0.02,
+            clean_audio_vocal_strength: 85.0,
+            clean_audio_vocal_clarity: 60.0,
+            clean_audio_vocal_dereverb: 50.0,
             merge_job: None,
             region_job: None,
             pending_stroke: None,
@@ -4037,7 +4052,12 @@ impl Studio {
         // The stream this clip plays; its peaks come when they are decoded,
         // and until then the lane is bare rather than showing another
         // track's shape.
-        let art = art_key(&clip.media_id, clip.audio_stream);
+        let media_id = if let Some(clean) = clip.cleaned_audio.as_ref().filter(|c| c.on) {
+            &clean.copy
+        } else {
+            &clip.media_id
+        };
+        let art = art_key(media_id, clip.audio_stream);
         let Some(peaks) = self.peaks.get(&art) else {
             return Default::default();
         };
@@ -8171,13 +8191,36 @@ impl Studio {
     pub fn clip_clean_audio_preset(&mut self, preset: &str) {
         self.clean_audio_preset = preset.to_owned();
         match preset {
-            "podcast" | "crisp" | "noise-only" => {
+            "podcast" => {
+                self.clean_audio_remove_noise = true;
+                self.clean_audio_isolate_vocals = true;
+                self.clean_audio_noise_attenuation = 45.0;
+                self.clean_audio_post_filter_beta = 0.02;
+                self.clean_audio_vocal_strength = 85.0;
+                self.clean_audio_vocal_clarity = 60.0;
+                self.clean_audio_vocal_dereverb = 50.0;
+            }
+            "crisp" => {
+                self.clean_audio_remove_noise = true;
+                self.clean_audio_isolate_vocals = true;
+                self.clean_audio_noise_attenuation = 65.0;
+                self.clean_audio_post_filter_beta = 0.03;
+                self.clean_audio_vocal_strength = 90.0;
+                self.clean_audio_vocal_clarity = 85.0;
+                self.clean_audio_vocal_dereverb = 40.0;
+            }
+            "noise-only" => {
                 self.clean_audio_remove_noise = true;
                 self.clean_audio_isolate_vocals = false;
+                self.clean_audio_noise_attenuation = 50.0;
+                self.clean_audio_post_filter_beta = 0.02;
             }
             "vocal-only" => {
                 self.clean_audio_remove_noise = false;
                 self.clean_audio_isolate_vocals = true;
+                self.clean_audio_vocal_strength = 90.0;
+                self.clean_audio_vocal_clarity = 75.0;
+                self.clean_audio_vocal_dereverb = 50.0;
             }
             _ => {}
         }
@@ -8187,6 +8230,19 @@ impl Studio {
     pub fn clip_clean_audio_toggles(&mut self, noise: bool, vocal: bool) {
         self.clean_audio_remove_noise = noise;
         self.clean_audio_isolate_vocals = vocal;
+        self.clean_audio_preset = "custom".to_owned();
+    }
+
+    /// Sets one parameter of DeepFilterNet3 or MossFormer2.
+    pub fn clip_clean_audio_param(&mut self, key: &str, value: f32) {
+        match key {
+            "noise_attenuation" => self.clean_audio_noise_attenuation = value,
+            "post_filter_beta" => self.clean_audio_post_filter_beta = value,
+            "vocal_strength" => self.clean_audio_vocal_strength = value,
+            "vocal_clarity" => self.clean_audio_vocal_clarity = value,
+            "vocal_dereverb" => self.clean_audio_vocal_dereverb = value,
+            _ => return,
+        }
         self.clean_audio_preset = "custom".to_owned();
     }
 
@@ -8289,6 +8345,11 @@ impl Studio {
                 .vocal_isolation_model
                 .clone()
                 .unwrap_or_else(|| concat_host::clean_audio::MOSSFORMER2_FILE.to_owned()),
+            noise_attenuation_db: self.clean_audio_noise_attenuation,
+            post_filter_beta: self.clean_audio_post_filter_beta,
+            vocal_isolation_strength: self.clean_audio_vocal_strength / 100.0,
+            vocal_clarity: self.clean_audio_vocal_clarity / 100.0,
+            vocal_dereverb: self.clean_audio_vocal_dereverb / 100.0,
         };
 
         let clip_id = clip.id.clone();
@@ -10257,6 +10318,17 @@ impl Studio {
                         } else {
                             Default::default()
                         };
+                    let active_media_id = clip
+                        .cleaned_audio
+                        .as_ref()
+                        .filter(|c| c.on)
+                        .map(|c| c.copy.as_str())
+                        .unwrap_or(clip.media_id.as_str());
+                    let art = art_key(active_media_id, clip.audio_stream);
+                    let audio_loading = self.clip_has_sound(clip)
+                        && (self.peaks.get(&art).is_none()
+                            || self.art_pending.contains(&art)
+                            || self.clean_audio_jobs.contains_key(&clip.id));
                     ClipData {
                         id: clip.id.as_str().into(),
                         name: clip.name.as_str().into(),
@@ -10293,6 +10365,7 @@ impl Studio {
                             .get(&clip.id)
                             .map(|(_, fraction)| *fraction)
                             .unwrap_or(-1.0),
+                        audio_loading,
                     }
                 })
                 .collect(),
@@ -10333,6 +10406,20 @@ impl Studio {
         editor.set_audio_processing(
             !self.clean_audio_jobs.is_empty() || self.host.playback.is_decoding(),
         );
+        let any_audio_loading = timeline.clips.iter().any(|clip| {
+            let active_media_id = clip
+                .cleaned_audio
+                .as_ref()
+                .filter(|c| c.on)
+                .map(|c| c.copy.as_str())
+                .unwrap_or(clip.media_id.as_str());
+            let art = art_key(active_media_id, clip.audio_stream);
+            self.clip_has_sound(clip)
+                && (self.peaks.get(&art).is_none()
+                    || self.art_pending.contains(&art)
+                    || self.clean_audio_jobs.contains_key(&clip.id))
+        });
+        editor.set_audio_loading(any_audio_loading);
         self.publish_frame(app);
         sync(&models.stage, self.stage_items());
         sync(&models.guides, self.stage_guides.clone());
@@ -11939,6 +12026,24 @@ impl Studio {
                 .into(),
             clean_audio_remove_noise: self.clean_audio_remove_noise,
             clean_audio_isolate_vocals: self.clean_audio_isolate_vocals,
+            clean_audio_noise_attenuation: self.clean_audio_noise_attenuation,
+            clean_audio_post_filter_beta: self.clean_audio_post_filter_beta,
+            clean_audio_vocal_strength: self.clean_audio_vocal_strength,
+            clean_audio_vocal_clarity: self.clean_audio_vocal_clarity,
+            clean_audio_vocal_dereverb: self.clean_audio_vocal_dereverb,
+            audio_loading: {
+                let active_media_id = clip
+                    .cleaned_audio
+                    .as_ref()
+                    .filter(|c| c.on)
+                    .map(|c| c.copy.as_str())
+                    .unwrap_or(clip.media_id.as_str());
+                let art = art_key(active_media_id, clip.audio_stream);
+                self.clip_has_sound(clip)
+                    && (self.peaks.get(&art).is_none()
+                        || self.art_pending.contains(&art)
+                        || self.clean_audio_jobs.contains_key(&clip.id))
+            },
             enhance_preview,
             enhance_before,
             enhance_after,

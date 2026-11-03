@@ -777,6 +777,8 @@ export component PreviewPane inherits Rectangle {
     in property <[StageGuideData]> stage-guides;
     /// Audio is being processed or decoded in the background.
     in property <bool> audio-processing: false;
+    /// Audio track is decoding or loading.
+    in property <bool> audio-loading: false;
 
     callback play-toggled();
     /// Absolute, in seconds.
@@ -1273,7 +1275,7 @@ export component PreviewPane inherits Rectangle {
                         vertical-alignment: center;
                     }
 
-                    if root.audio-processing: HorizontalLayout {
+                    if root.audio-loading || root.audio-processing: HorizontalLayout {
                         spacing: 4px;
                         alignment: center;
                         padding-left: 6px;
@@ -1284,7 +1286,9 @@ export component PreviewPane inherits Rectangle {
                             background: Theme.accent;
                         }
                         Text {
-                            text: I18n.t("previewPane.processingAudio");
+                            text: root.audio-loading
+                                ? I18n.t("previewPane.loadingAudio")
+                                : I18n.t("previewPane.processingAudio");
                             color: Theme.accent;
                             font-size: Theme.fs-sm;
                             vertical-alignment: center;

@@ -134,6 +134,8 @@ export struct ClipData {
     strip: StripData,
     /// Clean audio processing progress (0.0..1.0), or -1 if not running
     clean-audio-progress: float,
+    /// Whether this clip's audio stream / waveform is currently decoding or loading
+    audio-loading: bool,
 }
 
 
@@ -477,6 +479,12 @@ export struct SelectedClipData {
     clean-audio-preset: string,
     clean-audio-remove-noise: bool,
     clean-audio-isolate-vocals: bool,
+    clean-audio-noise-attenuation: float,
+    clean-audio-post-filter-beta: float,
+    clean-audio-vocal-strength: float,
+    clean-audio-vocal-clarity: float,
+    clean-audio-vocal-dereverb: float,
+    audio-loading: bool,
     /// Reverse writing this clip's backwards copy: -1 when it is not,
     /// else how far along
     reverse-progress: float,

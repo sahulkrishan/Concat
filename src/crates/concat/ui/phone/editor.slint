@@ -733,7 +733,12 @@ export component PhoneEditor inherits Rectangle {
                     font-family: Theme.font-technical;
                     font-size: Theme.fs-xs;
                 }
-                if Editor.audio-processing: Text {
+                if Editor.audio-loading: Text {
+                    text: I18n.t("previewPane.loadingAudio");
+                    color: Theme.accent;
+                    font-size: Theme.fs-xs;
+                }
+                if Editor.audio-processing && !Editor.audio-loading: Text {
                     text: I18n.t("previewPane.processingAudio");
                     color: Theme.accent;
                     font-size: Theme.fs-xs;
@@ -1623,6 +1628,7 @@ export component PhoneEditor inherits Rectangle {
                 clean-audio-set(on) => { Editor.clip-clean-audio-set(on); }
                 clean-audio-preset(preset) => { Editor.clip-clean-audio-preset(preset); }
                 clean-audio-toggles(noise, vocal) => { Editor.clip-clean-audio-toggles(noise, vocal); }
+                clean-audio-param(key, value) => { Editor.clip-clean-audio-param(key, value); }
             }
             if !Editor.selected-clip.batch-volume: ProcessorRows {
                 applied: Editor.applied-audio;

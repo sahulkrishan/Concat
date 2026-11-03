@@ -190,6 +190,7 @@ export component Seat inherits Rectangle {
             painting: Editor.painting && Editor.selected-clip.cutout == 2;
             picking: Editor.picking-colour && !SourcePreview.open;
             audio-processing: Editor.audio-processing;
+            audio-loading: Editor.audio-loading;
 
             play-toggled => { Editor.play-toggled(); }
             seek(seconds) => {
@@ -290,6 +291,7 @@ export component Seat inherits Rectangle {
             clip-clean-audio-set(on) => { Editor.clip-clean-audio-set(on); }
             clip-clean-audio-preset(preset) => { Editor.clip-clean-audio-preset(preset); }
             clip-clean-audio-toggles(noise, vocal) => { Editor.clip-clean-audio-toggles(noise, vocal); }
+            clip-clean-audio-param(key, value) => { Editor.clip-clean-audio-param(key, value); }
             transition-remove => { Editor.transition-remove(); }
             transition-duration-set(seconds) => { Editor.transition-duration-set(seconds); }
             transition-param-set(key, value) => { Editor.transition-param-set(key, value); }

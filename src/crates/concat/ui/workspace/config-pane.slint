@@ -226,6 +226,7 @@ export component ConfigPane inherits Rectangle {
     callback clip-clean-audio-set(on: bool);
     callback clip-clean-audio-preset(preset: string);
     callback clip-clean-audio-toggles(noise: bool, vocal: bool);
+    callback clip-clean-audio-param(key: string, value: float);
     callback transition-remove();
     callback transition-duration-set(seconds: float);
     callback transition-param-set(key: string, value: float);
@@ -822,6 +823,7 @@ export component ConfigPane inherits Rectangle {
                         clean-audio-set(on) => { root.clip-clean-audio-set(on); }
                         clean-audio-preset(preset) => { root.clip-clean-audio-preset(preset); }
                         clean-audio-toggles(noise, vocal) => { root.clip-clean-audio-toggles(noise, vocal); }
+                        clean-audio-param(key, value) => { root.clip-clean-audio-param(key, value); }
                     }
                     // The three treatments, between the mix and the library:
                     // they are chain links like any other, but they are the

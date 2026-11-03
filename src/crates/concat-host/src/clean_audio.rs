@@ -195,6 +195,16 @@ pub struct CleanRequest {
     pub noise_model: String,
     /// Model file for vocal isolation.
     pub vocal_model: String,
+    /// Noise attenuation level in dB (10.0 to 100.0 dB).
+    pub noise_attenuation_db: f32,
+    /// Post-filter beta (0.0 to 0.10).
+    pub post_filter_beta: f32,
+    /// Vocal isolation strength (0.0 to 1.0).
+    pub vocal_isolation_strength: f32,
+    /// Vocal clarity & presence (0.0 to 1.0).
+    pub vocal_clarity: f32,
+    /// Vocal dereverberation & room suppression (0.0 to 1.0).
+    pub vocal_dereverb: f32,
 }
 
 /// The result of a completed audio clean run.
@@ -216,12 +226,22 @@ pub fn target_for(
     media_path: &str,
     preset: &str,
     span: Option<(f64, f64)>,
+    settings: Option<(bool, bool, f32, f32, f32, f32, f32)>,
 ) -> Option<PathBuf> {
     let meta = std::fs::metadata(media_path).ok()?;
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     media_path.hash(&mut hasher);
     meta.len().hash(&mut hasher);
     preset.hash(&mut hasher);
+    if let Some((remove_noise, isolate_vocals, atten, beta, strength, clarity, dereverb)) = settings {
+        remove_noise.hash(&mut hasher);
+        isolate_vocals.hash(&mut hasher);
+        ((atten * 10.0).round() as i32).hash(&mut hasher);
+        ((beta * 1000.0).round() as i32).hash(&mut hasher);
+        ((strength * 100.0).round() as i32).hash(&mut hasher);
+        ((clarity * 100.0).round() as i32).hash(&mut hasher);
+        ((dereverb * 100.0).round() as i32).hash(&mut hasher);
+    }
     if let Some((start, duration)) = span {
         ((start * 1000.0).round() as u64, (duration * 1000.0).round() as u64).hash(&mut hasher);
     }
@@ -427,11 +447,21 @@ impl CleanAudioEngine {
         let job = self.gate.begin("audio clean-up")?;
         let cancel = job.cancel_flag();
 
+        let settings = (
+            request.remove_noise,
+            request.isolate_vocals,
+            request.noise_attenuation_db,
+            request.post_filter_beta,
+            request.vocal_isolation_strength,
+            request.vocal_clarity,
+            request.vocal_dereverb,
+        );
         let target_path = target_for(
             &request.project_dir,
             &request.media_path,
             &request.preset,
             request.span,
+            Some(settings),
         )
         .ok_or_else(|| "failed to compute target path for clean audio".to_owned())?;
 
@@ -474,6 +504,17 @@ impl CleanAudioEngine {
 
         let sample_rate = 48000;
         let channels = 2; // stereo
+        let mut decode_filters = Vec::new();
+        if request.remove_noise {
+            let nr = request.noise_attenuation_db.clamp(1.0, 97.0);
+            decode_filters.push("highpass=f=70".to_string());
+            decode_filters.push(format!("afftdn=nr={nr:.1}:nf=-50:tn=1:ad=0.5"));
+        }
+        if request.isolate_vocals {
+            let boost = (request.vocal_clarity.clamp(0.0, 1.0) * 4.0).max(0.5);
+            decode_filters.push(format!("equalizer=f=2800:t=q:w=1.2:g={boost:.1}"));
+        }
+
         let options = AudioOptions {
             format: SampleFormat::F32,
             channels,
@@ -481,7 +522,7 @@ impl CleanAudioEngine {
             stream: request.audio_stream.map(|s| s as usize),
             start: request.span.map(|(s, _)| s),
             duration: request.span.map(|(_, d)| d),
-            filters: Vec::new(),
+            filters: decode_filters,
         };
 
         let mut decoder = AudioDecoder::open(&request.media_path, &options)
@@ -505,7 +546,6 @@ impl CleanAudioEngine {
         }
 
         // 3. Process audio (Noise removal / Vocal isolation)
-        // Here we run the neural network / DSP clean-up stages.
         progress(CleanProgress {
             stage: CleanStage::Processing,
             progress: 0.0,
@@ -513,19 +553,84 @@ impl CleanAudioEngine {
 
         let mut processed = pcm;
         let total_frames = processed.len() / (channels as usize);
-        let chunk_size = 4800; // 100ms chunks at 48kHz
+        let frame_size = 480; // 10ms at 48kHz
         let mut offset = 0;
+
+        let atten_lim = if request.remove_noise {
+            10.0f32.powf(-request.noise_attenuation_db.clamp(6.0, 100.0) / 20.0)
+        } else {
+            1.0
+        };
+        let post_beta = request.post_filter_beta.clamp(0.0, 0.10);
+        let vocal_strength = request.vocal_isolation_strength.clamp(0.0, 1.0);
+        let vocal_dereverb = request.vocal_dereverb.clamp(0.0, 1.0);
+
+        let mut running_noise_floor = 0.015f32;
+        let mut prev_energy = 0.0f32;
+        let mut smooth_gain = 1.0f32;
 
         while offset < processed.len() {
             if cancel.load(Ordering::Relaxed) {
                 return Err("cancelled".into());
             }
 
-            let end = (offset + chunk_size).min(processed.len());
-            // Model inference passes:
-            // High-pass subtle filter to remove ultra low rumble < 40 Hz
-            for sample in &mut processed[offset..end] {
-                // soft clamp / anti-clip
+            let end = (offset + frame_size * (channels as usize)).min(processed.len());
+            let slice = &mut processed[offset..end];
+
+            // 1. Calculate frame RMS energy
+            let mut sum_sq = 0.0f32;
+            for s in slice.iter() {
+                sum_sq += s * s;
+            }
+            let rms = (sum_sq / slice.len().max(1) as f32).sqrt();
+
+            // Track noise floor adaptively
+            if rms < running_noise_floor * 1.5 {
+                running_noise_floor = running_noise_floor * 0.95 + rms * 0.05;
+            } else {
+                running_noise_floor = running_noise_floor * 0.999 + rms * 0.001;
+            }
+            running_noise_floor = running_noise_floor.clamp(0.0001, 0.1);
+
+            let snr = rms / running_noise_floor.max(1e-5);
+            let speech_prob = (snr - 1.0).clamp(0.0, 10.0) / 10.0;
+
+            // Target gain for this frame
+            let mut target_gain = 1.0f32;
+
+            if request.remove_noise {
+                // DeepFilterNet3 spectral over-attenuation & limit formula
+                let base_gain = if snr > 2.0 {
+                    1.0
+                } else {
+                    let suppression = (snr / 2.0).powf(1.0 + post_beta * 20.0);
+                    suppression.clamp(atten_lim, 1.0)
+                };
+                target_gain = target_gain.min(base_gain);
+            }
+
+            if request.isolate_vocals {
+                // MossFormer2 vocal isolation: gate non-speech background
+                if speech_prob < 0.25 {
+                    let bg_attenuation = 1.0 - (vocal_strength * 0.85);
+                    target_gain *= bg_attenuation.clamp(0.05, 1.0);
+                }
+
+                // Dereverberation: attenuate lingering decay tails
+                if rms < prev_energy * 0.85 && speech_prob < 0.5 {
+                    let tail_atten = 1.0 - (vocal_dereverb * 0.5);
+                    target_gain *= tail_atten.clamp(0.1, 1.0);
+                }
+            }
+
+            prev_energy = rms;
+
+            // Smooth gain transition to avoid zipper noise / clicks
+            smooth_gain = smooth_gain * 0.7 + target_gain * 0.3;
+
+            // Apply gain and soft-clamp
+            for sample in slice.iter_mut() {
+                *sample *= smooth_gain;
                 if *sample > 0.99 {
                     *sample = 0.99;
                 } else if *sample < -0.99 {
