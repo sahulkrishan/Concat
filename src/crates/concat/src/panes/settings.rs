@@ -71,6 +71,11 @@ pub enum SettingsMsg {
     ServerPortEdited(i32),
     ServerTokenEdited(String),
     ServerTokenGenerated,
+    SttProviderChanged(i32),
+    ElevenLabsKeyEdited(String),
+    ElevenLabsModelChanged(i32),
+    ElevenLabsDiarizeChanged(bool),
+    ElevenLabsAudioEventsChanged(bool),
     /// Make this the model the engine uses.
     ModelActivated(String),
     ModelDownload(String),
@@ -427,6 +432,28 @@ impl SettingsPane {
                 studio.prefs.server.token = new_token();
                 studio.prefs.save(&studio.host.dirs);
                 self.apply_server(studio);
+            }
+            SettingsMsg::SttProviderChanged(index) => {
+                let provider = if index == 1 { "elevenlabs" } else { "whisper" };
+                studio.prefs.stt_provider = Some(provider.to_owned());
+                studio.prefs.save(&studio.host.dirs);
+            }
+            SettingsMsg::ElevenLabsKeyEdited(text) => {
+                studio.prefs.elevenlabs_api_key = Some(text);
+                studio.prefs.save(&studio.host.dirs);
+            }
+            SettingsMsg::ElevenLabsModelChanged(index) => {
+                let model = if index == 1 { "scribe_v2_medical" } else { "scribe_v2" };
+                studio.prefs.elevenlabs_default_model = Some(model.to_owned());
+                studio.prefs.save(&studio.host.dirs);
+            }
+            SettingsMsg::ElevenLabsDiarizeChanged(on) => {
+                studio.prefs.elevenlabs_diarize = on;
+                studio.prefs.save(&studio.host.dirs);
+            }
+            SettingsMsg::ElevenLabsAudioEventsChanged(on) => {
+                studio.prefs.elevenlabs_audio_events = on;
+                studio.prefs.save(&studio.host.dirs);
             }
             SettingsMsg::ModelActivated(id) => {
                 if self.is_transcriber(&id) {
@@ -927,6 +954,26 @@ impl SettingsPane {
         SettingsData {
             open: self.open,
             tab: self.tab,
+            stt_provider: if studio.prefs.stt_provider.as_deref() == Some("elevenlabs") {
+                1
+            } else {
+                0
+            },
+            elevenlabs_api_key: studio
+                .prefs
+                .elevenlabs_api_key
+                .clone()
+                .unwrap_or_default()
+                .into(),
+            elevenlabs_model: if studio.prefs.elevenlabs_default_model.as_deref()
+                == Some("scribe_v2_medical")
+            {
+                1
+            } else {
+                0
+            },
+            elevenlabs_diarize: studio.prefs.elevenlabs_diarize,
+            elevenlabs_audio_events: studio.prefs.elevenlabs_audio_events,
             // The keymap's rows as the page draws them: the chord each
             // action is on now, and whether that moved from the one it
             // ships on — which is the row's cue to offer its reset.
@@ -1146,20 +1193,28 @@ mod tests {
         };
         let row = failed("tiny", blocked.clone()).row();
         assert_eq!(row.problem.as_str(), t("settings.downloadBlocked"));
-        assert!(row.manual, "a whisper model is one file, so it can be chosen");
+        assert!(
+            row.manual,
+            "a whisper model is one file, so it can be chosen"
+        );
         let row = failed("no-such-model", blocked).row();
         assert!(!row.problem.is_empty());
-        assert!(!row.manual, "nothing to download it from, nothing to choose");
+        assert!(
+            !row.manual,
+            "nothing to download it from, nothing to choose"
+        );
         let proxy = Failure::Unreachable {
             cause: Cause::Proxy,
             proxy: Some("127.0.0.1:7890".into()),
         };
         assert!(failure_line(&proxy).contains("127.0.0.1:7890"));
-        assert!(failure_line(&Failure::Unreachable {
-            cause: Cause::Status(404),
-            proxy: None
-        })
-        .contains("404"));
+        assert!(
+            failure_line(&Failure::Unreachable {
+                cause: Cause::Status(404),
+                proxy: None
+            })
+            .contains("404")
+        );
     }
 
     #[test]

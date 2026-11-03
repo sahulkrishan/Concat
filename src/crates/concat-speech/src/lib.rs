@@ -19,9 +19,15 @@
 
 #[cfg(feature = "chatterbox")]
 pub mod chatterbox;
+pub mod stt;
 pub mod transcribe;
 pub mod tts;
 
+pub use stt::{
+    AudioPreprocessor, ElevenLabsProvider, LanguageModelRouter, ModelDescriptor,
+    ProviderRequest, SpeechToTextProvider, TokenType, TranscriptionResult, WhisperProvider,
+    WordSegment,
+};
 pub use transcribe::Transcriber;
 pub use tts::Speech;
 

@@ -2100,6 +2100,21 @@ fn start(project: Option<std::path::PathBuf>, smoke: bool) -> Result<(), slint::
     app.on_settings_download_source_changed(on_window!(|state, index: i32| {
         state.handle(Msg::Settings(SettingsMsg::DownloadSourceChanged(index)));
     }));
+    app.on_settings_stt_provider_changed(on_window!(|state, index: i32| {
+        state.handle(Msg::Settings(SettingsMsg::SttProviderChanged(index)));
+    }));
+    app.on_settings_elevenlabs_key_edited(on_window!(|state, key: SharedString| {
+        state.handle(Msg::Settings(SettingsMsg::ElevenLabsKeyEdited(key.to_string())));
+    }));
+    app.on_settings_elevenlabs_model_changed(on_window!(|state, index: i32| {
+        state.handle(Msg::Settings(SettingsMsg::ElevenLabsModelChanged(index)));
+    }));
+    app.on_settings_elevenlabs_diarize_changed(on_window!(|state, on: bool| {
+        state.handle(Msg::Settings(SettingsMsg::ElevenLabsDiarizeChanged(on)));
+    }));
+    app.on_settings_elevenlabs_audio_events_changed(on_window!(|state, on: bool| {
+        state.handle(Msg::Settings(SettingsMsg::ElevenLabsAudioEventsChanged(on)));
+    }));
     app.on_settings_download_base_edited(on_window!(|state, text: SharedString| {
         state.handle(Msg::Settings(SettingsMsg::DownloadBaseEdited(
             text.to_string(),

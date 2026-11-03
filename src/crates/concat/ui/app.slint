@@ -395,6 +395,11 @@ export component App inherits Window {
     callback settings-version-chosen(index: int);
     callback settings-install-version();
     callback settings-install-cancel();
+    callback settings-stt-provider-changed(index: int);
+    callback settings-elevenlabs-key-edited(key: string);
+    callback settings-elevenlabs-model-changed(index: int);
+    callback settings-elevenlabs-diarize-changed(on: bool);
+    callback settings-elevenlabs-audio-events-changed(on: bool);
     /// The Shortcuts page: a row asked to capture the next keys, and the
     /// two ways out of a change — put one row back, or put them all back.
     callback settings-shortcut-capture(id: string);
@@ -1037,6 +1042,11 @@ export component App inherits Window {
         version-chosen(index) => { root.settings-version-chosen(index); }
         install-version => { root.settings-install-version(); }
         install-cancel => { root.settings-install-cancel(); }
+        stt-provider-changed(index) => { root.settings-stt-provider-changed(index); }
+        elevenlabs-key-edited(key) => { root.settings-elevenlabs-key-edited(key); }
+        elevenlabs-model-changed(index) => { root.settings-elevenlabs-model-changed(index); }
+        elevenlabs-diarize-changed(on) => { root.settings-elevenlabs-diarize-changed(on); }
+        elevenlabs-audio-events-changed(on) => { root.settings-elevenlabs-audio-events-changed(on); }
         model-activated(id) => { root.model-activated(id); }
         model-download(id) => { root.model-download(id); }
         model-cancel(id) => { root.model-cancel(id); }

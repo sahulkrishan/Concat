@@ -6,7 +6,7 @@
 //! models are chosen, which languages. A missing or unreadable file is the
 //! defaults, never an error.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use concat_host::AppDirs;
 use serde::{Deserialize, Serialize};
@@ -46,6 +46,24 @@ pub struct Preferences {
     pub ui_scale: Option<u32>,
     /// The chosen transcriber model id, e.g. "base.en".
     pub transcriber_model: Option<String>,
+    /// Speech-to-text provider ("whisper" or "elevenlabs").
+    #[serde(default)]
+    pub stt_provider: Option<String>,
+    /// User-supplied ElevenLabs API Key for Scribe V2.
+    #[serde(default)]
+    pub elevenlabs_api_key: Option<String>,
+    /// Default ElevenLabs model (e.g. "scribe_v2" or "scribe_v2_medical").
+    #[serde(default)]
+    pub elevenlabs_default_model: Option<String>,
+    /// User-configured language-to-model mapping overrides for ElevenLabs.
+    #[serde(default)]
+    pub elevenlabs_language_models: HashMap<String, String>,
+    /// Whether ElevenLabs transcription should perform speaker diarization.
+    #[serde(default)]
+    pub elevenlabs_diarize: bool,
+    /// Whether ElevenLabs transcription should tag audio events (laughter, applause, etc.).
+    #[serde(default)]
+    pub elevenlabs_audio_events: bool,
     /// The language the captions sheet last asked the transcriber for, by
     /// whisper's code ("id", "de", ...). `None` is whisper's to hear, and
     /// so is a code whisper no longer knows.

@@ -69,6 +69,11 @@ export struct SettingsData {
     /// 0 General, 1 Appearance, 2 Transcriber, 3 Speech, 4 Remote, 5 About,
     /// 6 Version, 7 Shortcuts
     tab: int,
+    stt-provider: int,
+    elevenlabs-api-key: string,
+    elevenlabs-model: int,
+    elevenlabs-diarize: bool,
+    elevenlabs-audio-events: bool,
     language: int,
     /// what the log records: 0 errors only, 1 warnings, 2 normal, 3
     /// debug, 4 everything
@@ -683,6 +688,11 @@ export component SettingsDialog inherits Modal {
     callback model-remove(id: string);
     callback model-open-link(id: string);
     callback model-choose-file(id: string);
+    callback stt-provider-changed(index: int);
+    callback elevenlabs-key-edited(key: string);
+    callback elevenlabs-model-changed(index: int);
+    callback elevenlabs-diarize-changed(on: bool);
+    callback elevenlabs-audio-events-changed(on: bool);
     /// The Shortcuts page: a row asked for the next keys it should be
     /// bound to, one row put back as it ships, and all of them put back.
     callback shortcut-capture(id: string);
@@ -1219,9 +1229,22 @@ export component SettingsDialog inherits Modal {
             }
 
             if root.data.tab == 2: VerticalLayout {
+                spacing: 12px;
+
                 DialogSection {
                     ruled: false;
                     first: true;
+                    title: "Speech to Text Engine";
+
+                    SegmentedControl {
+                        options: ["Local Whisper", "ElevenLabs Scribe V2"];
+                        current: root.data.stt-provider;
+                        changed(index) => { root.stt-provider-changed(index); }
+                    }
+                }
+
+                if root.data.stt-provider == 0: DialogSection {
+                    ruled: false;
                     title: I18n.t("settings.models");
 
                     for model in root.transcribers: ModelRow {
@@ -1258,6 +1281,61 @@ export component SettingsDialog inherits Modal {
                             color: Theme.green;
                             font-size: Theme.fs-sm;
                             vertical-alignment: center;
+                        }
+                    }
+                }
+
+                if root.data.stt-provider == 1: VerticalLayout {
+                    spacing: 12px;
+
+                    DialogSection {
+                        ruled: false;
+                        title: "ElevenLabs API Key";
+                        hint: "Required for ElevenLabs Scribe V2 transcription.";
+
+                        Field {
+                            value: root.data.elevenlabs-api-key;
+                            placeholder: "xi-api-key...";
+                            technical: true;
+                            edited(key) => { root.elevenlabs-key-edited(key); }
+                        }
+                    }
+
+                    DialogSection {
+                        ruled: false;
+                        title: "Default Model";
+                        hint: "Fallback model when auto-detecting or if unmapped.";
+
+                        Select {
+                            options: ["Scribe V2 (General speech, 90+ languages)", "Scribe V2 Medical (Clinical & Medical)"];
+                            current: root.data.elevenlabs-model;
+                            changed(index) => { root.elevenlabs-model-changed(index); }
+                        }
+                    }
+
+                    DialogSection {
+                        ruled: false;
+                        title: "Transcription Options";
+
+                        HorizontalLayout {
+                            spacing: 12px;
+
+                            Button {
+                                label: root.data.elevenlabs-diarize ? "Diarization: On" : "Diarization: Off";
+                                clicked => { root.elevenlabs-diarize-changed(!root.data.elevenlabs-diarize); }
+                            }
+
+                            Button {
+                                label: root.data.elevenlabs-audio-events ? "Audio Events: On" : "Audio Events: Off";
+                                clicked => { root.elevenlabs-audio-events-changed(!root.data.elevenlabs-audio-events); }
+                            }
+                        }
+
+                        Text {
+                            text: "Word timestamps and animation metadata are preserved. Large files are automatically chunked and stitched.";
+                            color: Theme.fg-dim;
+                            font-size: Theme.fs-sm;
+                            wrap: word-wrap;
                         }
                     }
                 }
