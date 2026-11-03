@@ -36,6 +36,8 @@ export struct CaptionsSheetData {
     open: bool,
     /// "Use Sample Voice": the words come from a clip's sound.
     from-voice: bool,
+    /// 0 Local Whisper, 1 ElevenLabs Scribe V2
+    engine: int,
     /// The timeline's clips with sound, by file and start.
     sources: [string],
     /// Row in `sources` of the clip to transcribe; -1 for none.
@@ -78,6 +80,7 @@ export component CaptionsDialog inherits Modal {
     in property <[string]> languages;
 
     callback voice-toggled(on: bool);
+    callback engine-changed(index: int);
     callback source-changed(index: int);
     callback text-edited(text: string);
     callback model-changed(index: int);
@@ -197,6 +200,15 @@ export component CaptionsDialog inherits Modal {
             title: I18n.t("common.transcriber");
 
             DialogRow {
+                label: "Engine";
+                SegmentedControl {
+                    options: ["Local Whisper", "ElevenLabs Scribe V2"];
+                    current: root.data.engine;
+                    changed(index) => { root.engine-changed(index); }
+                }
+            }
+
+            DialogRow {
                 label: I18n.t("common.audio");
                 Select {
                     options: root.data.sources;
@@ -212,7 +224,7 @@ export component CaptionsDialog inherits Modal {
                 Select {
                     options: root.models;
                     current: root.data.model;
-                    placeholder: I18n.t("common.noneInstalled");
+                    placeholder: root.data.engine == 1 ? "Scribe V2" : I18n.t("common.noneInstalled");
                     enabled: root.models.length > 0;
                     changed(index) => { root.model-changed(index); }
                 }
@@ -229,7 +241,9 @@ export component CaptionsDialog inherits Modal {
             }
 
             if !root.data.ready: Text {
-                text: I18n.t("captions.downloadTranscriberModelFirst");
+                text: root.data.engine == 1
+                    ? "ElevenLabs API key not configured. Set and verify your API key in Settings > Transcriber."
+                    : I18n.t("captions.downloadTranscriberModelFirst");
                 color: Theme.fg-muted;
                 font-size: Theme.fs-sm;
                 wrap: word-wrap;

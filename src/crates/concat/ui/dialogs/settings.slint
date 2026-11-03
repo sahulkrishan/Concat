@@ -74,6 +74,9 @@ export struct SettingsData {
     elevenlabs-model: int,
     elevenlabs-diarize: bool,
     elevenlabs-audio-events: bool,
+    elevenlabs-verifying: bool,
+    elevenlabs-status-message: string,
+    elevenlabs-status-ok: bool,
     language: int,
     /// what the log records: 0 errors only, 1 warnings, 2 normal, 3
     /// debug, 4 everything
@@ -693,6 +696,7 @@ export component SettingsDialog inherits Modal {
     callback elevenlabs-model-changed(index: int);
     callback elevenlabs-diarize-changed(on: bool);
     callback elevenlabs-audio-events-changed(on: bool);
+    callback elevenlabs-verify-clicked();
     /// The Shortcuts page: a row asked for the next keys it should be
     /// bound to, one row put back as it ships, and all of them put back.
     callback shortcut-capture(id: string);
@@ -1298,6 +1302,48 @@ export component SettingsDialog inherits Modal {
                             placeholder: "xi-api-key...";
                             technical: true;
                             edited(key) => { root.elevenlabs-key-edited(key); }
+                        }
+
+                        HorizontalLayout {
+                            spacing: 10px;
+                            alignment: start;
+
+                            Button {
+                                label: root.data.elevenlabs-verifying ? "Verifying..." : "Verify Connection & Key";
+                                glyph: Glyph.check;
+                                enabled: !root.data.elevenlabs-verifying && root.data.elevenlabs-api-key != "";
+                                clicked => { root.elevenlabs-verify-clicked(); }
+                            }
+                        }
+
+                        if root.data.elevenlabs-status-message != "": Rectangle {
+                            border-radius: Theme.r;
+                            background: root.data.elevenlabs-status-ok ? Theme.well : Theme.danger-soft;
+                            border-width: 1px;
+                            border-color: root.data.elevenlabs-status-ok ? Theme.green : Theme.danger;
+
+                            HorizontalLayout {
+                                padding: 10px;
+                                spacing: 8px;
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    Icon {
+                                        glyph: root.data.elevenlabs-status-ok ? Glyph.check : Glyph.close;
+                                        size: 13px;
+                                        tint: root.data.elevenlabs-status-ok ? Theme.green : Theme.danger;
+                                    }
+                                }
+
+                                Text {
+                                    horizontal-stretch: 1;
+                                    text: root.data.elevenlabs-status-message;
+                                    color: root.data.elevenlabs-status-ok ? Theme.green : Theme.danger;
+                                    font-size: Theme.fs-sm;
+                                    vertical-alignment: center;
+                                    wrap: word-wrap;
+                                }
+                            }
                         }
                     }
 

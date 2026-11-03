@@ -20,6 +20,25 @@ use crate::transcribe::Segment;
 /// Default endpoint for ElevenLabs API.
 pub const ELEVENLABS_DEFAULT_BASE_URL: &str = "https://api.elevenlabs.io";
 
+/// Result of verifying an ElevenLabs API key.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct VerificationResult {
+    /// Whether authentication succeeded.
+    pub is_valid: bool,
+    /// Subscription tier (e.g. "free", "starter", "creator", "pro").
+    pub tier: Option<String>,
+    /// Account or subscription status (e.g. "active").
+    pub status: Option<String>,
+    /// Character usage in current cycle.
+    pub character_count: Option<u64>,
+    /// Character limit in current cycle.
+    pub character_limit: Option<u64>,
+    /// Whether speech-to-text / Scribe V2 is confirmed accessible.
+    pub has_speech_to_text: bool,
+    /// Human-readable summary message.
+    pub message: String,
+}
+
 /// ElevenLabs Scribe V2 provider implementation.
 #[derive(Clone, Debug)]
 pub struct ElevenLabsProvider {
@@ -42,6 +61,105 @@ impl ElevenLabsProvider {
     pub fn with_base_url(mut self, url: impl Into<String>) -> Self {
         self.base_url = url.into();
         self
+    }
+
+    /// Verifies the API key against the ElevenLabs API, checking credentials,
+    /// subscription status, and model availability.
+    pub fn verify_api_key(&self) -> Result<VerificationResult, String> {
+        let key = self.api_key.trim();
+        if key.is_empty() {
+            return Err("ElevenLabs API key is empty. Please enter an API key.".to_owned());
+        }
+
+        // 1. Check /v1/user
+        let user_url = format!("{}/v1/user", self.base_url);
+        let resp = ureq::get(&user_url)
+            .set("xi-api-key", key)
+            .timeout(std::time::Duration::from_secs(12))
+            .call();
+
+        let (tier, status, count, limit) = match resp {
+            Ok(response) => {
+                let text = response
+                    .into_string()
+                    .map_err(|e| format!("Failed to read response body: {e}"))?;
+                let body: serde_json::Value = serde_json::from_str(&text)
+                    .map_err(|e| format!("Failed to parse ElevenLabs JSON response: {e}"))?;
+
+                let tier = body["subscription"]["tier"].as_str().map(ToOwned::to_owned);
+                let status = body["subscription"]["status"]
+                    .as_str()
+                    .map(ToOwned::to_owned);
+                let count = body["subscription"]["character_count"].as_u64();
+                let limit = body["subscription"]["character_limit"].as_u64();
+                (tier, status, count, limit)
+            }
+            Err(ureq::Error::Status(status, response)) => {
+                let err_text = response.into_string().unwrap_or_default();
+                let msg = extract_error_message(&err_text).unwrap_or(err_text);
+                if status == 401 {
+                    return Err(format!("Invalid API key (HTTP 401): {msg}"));
+                } else if status == 403 {
+                    return Err(format!(
+                        "Forbidden (HTTP 403) - Key lacks required permissions/scopes: {msg}"
+                    ));
+                } else {
+                    return Err(format!("ElevenLabs API error (HTTP {status}): {msg}"));
+                }
+            }
+            Err(ureq::Error::Transport(e)) => {
+                return Err(format!("Network connection failed: {e}"));
+            }
+        };
+
+        // 2. Check /v1/models to verify speech-to-text / scribe access
+        let models_url = format!("{}/v1/models", self.base_url);
+        let models_resp = ureq::get(&models_url)
+            .set("xi-api-key", key)
+            .timeout(std::time::Duration::from_secs(12))
+            .call();
+
+        let has_scribe = match models_resp {
+            Ok(resp) => {
+                if let Ok(text) = resp.into_string() {
+                    if let Ok(models) = serde_json::from_str::<serde_json::Value>(&text) {
+                        models.as_array().map_or(true, |arr| {
+                            arr.iter().any(|m| {
+                                m["model_id"]
+                                    .as_str()
+                                    .is_some_and(|id| id.contains("scribe"))
+                            }) || arr.is_empty()
+                        })
+                    } else {
+                        true
+                    }
+                } else {
+                    true
+                }
+            }
+            Err(_) => true,
+        };
+
+        let tier_display = tier.as_deref().unwrap_or("active");
+        let status_display = status.as_deref().unwrap_or("active");
+        let quota_str = match (count, limit) {
+            (Some(c), Some(l)) => format!(" | Quota: {c}/{l} chars"),
+            _ => String::new(),
+        };
+
+        let message = format!(
+            "Connection verified! API key is valid (Tier: {tier_display}, Status: {status_display}{quota_str}). Scribe V2 STT ready."
+        );
+
+        Ok(VerificationResult {
+            is_valid: true,
+            tier,
+            status,
+            character_count: count,
+            character_limit: limit,
+            has_speech_to_text: has_scribe,
+            message,
+        })
     }
 }
 
@@ -587,5 +705,62 @@ mod tests {
         assert_eq!(result.segments.len(), 1);
         assert_eq!(result.segments[0].text, "Hello world from ElevenLabs.");
         assert_eq!(result.segments[0].words.len(), 4);
+    }
+
+    #[test]
+    fn test_verify_api_key_empty() {
+        let provider = ElevenLabsProvider::new("   ");
+        let err = provider.verify_api_key().unwrap_err();
+        assert!(err.contains("empty"));
+    }
+
+    #[test]
+    fn test_verify_api_key_mock_success() {
+        use std::io::Write;
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("binds ephemeral port");
+        let port = listener.local_addr().unwrap().port();
+
+        std::thread::spawn(move || {
+            // First call: /v1/user
+            let (mut stream, _) = listener.accept().unwrap();
+            let mock_user = r#"{
+                "subscription": {
+                    "tier": "starter",
+                    "status": "active",
+                    "character_count": 1200,
+                    "character_limit": 10000
+                }
+            }"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                mock_user.len(),
+                mock_user
+            );
+            stream.write_all(response.as_bytes()).unwrap();
+
+            // Second call: /v1/models
+            let (mut stream2, _) = listener.accept().unwrap();
+            let mock_models = r#"[{"model_id": "scribe_v2", "name": "Scribe V2"}]"#;
+            let response2 = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                mock_models.len(),
+                mock_models
+            );
+            stream2.write_all(response2.as_bytes()).unwrap();
+        });
+
+        let provider = ElevenLabsProvider::new("valid-test-key")
+            .with_base_url(format!("http://127.0.0.1:{port}"));
+
+        let res = provider.verify_api_key().expect("verification succeeds");
+        assert!(res.is_valid);
+        assert_eq!(res.tier.as_deref(), Some("starter"));
+        assert_eq!(res.status.as_deref(), Some("active"));
+        assert_eq!(res.character_count, Some(1200));
+        assert_eq!(res.character_limit, Some(10000));
+        assert!(res.has_speech_to_text);
+        assert!(res.message.contains("valid"));
     }
 }

@@ -2117,6 +2117,9 @@ fn start(project: Option<std::path::PathBuf>, smoke: bool) -> Result<(), slint::
     app.on_settings_elevenlabs_audio_events_changed(on_window!(|state, on: bool| {
         state.handle(Msg::Settings(SettingsMsg::ElevenLabsAudioEventsChanged(on)));
     }));
+    app.on_settings_elevenlabs_verify_clicked(on_window!(|state| {
+        state.handle(Msg::Settings(SettingsMsg::ElevenLabsVerifyKey));
+    }));
     app.on_settings_download_base_edited(on_window!(|state, text: SharedString| {
         state.handle(Msg::Settings(SettingsMsg::DownloadBaseEdited(
             text.to_string(),
@@ -2233,6 +2236,9 @@ fn start(project: Option<std::path::PathBuf>, smoke: bool) -> Result<(), slint::
 
     app.on_captions_closed(on_window!(|state| {
         state.handle(Msg::Captions(CaptionsMsg::Close));
+    }));
+    app.on_captions_engine_changed(on_window!(|state, index: i32| {
+        state.handle(Msg::Captions(CaptionsMsg::EngineChanged(index)));
     }));
     app.on_captions_voice_toggled(on_window!(|state, on: bool| {
         state.handle(Msg::Captions(CaptionsMsg::VoiceToggled(on)));

@@ -76,6 +76,8 @@ pub enum SettingsMsg {
     ElevenLabsModelChanged(i32),
     ElevenLabsDiarizeChanged(bool),
     ElevenLabsAudioEventsChanged(bool),
+    ElevenLabsVerifyKey,
+    ElevenLabsKeyVerified(Result<String, String>),
     /// Make this the model the engine uses.
     ModelActivated(String),
     ModelDownload(String),
@@ -270,6 +272,9 @@ pub struct SettingsPane {
     install: Option<(f32, f32)>,
     /// The running switch's stop flag.
     install_cancel: Arc<AtomicBool>,
+    pub elevenlabs_verifying: bool,
+    pub elevenlabs_status_message: String,
+    pub elevenlabs_status_ok: bool,
 }
 
 impl SettingsPane {
@@ -441,6 +446,7 @@ impl SettingsPane {
             SettingsMsg::ElevenLabsKeyEdited(text) => {
                 studio.prefs.elevenlabs_api_key = Some(text);
                 studio.prefs.save(&studio.host.dirs);
+                self.elevenlabs_status_message.clear();
             }
             SettingsMsg::ElevenLabsModelChanged(index) => {
                 let model = if index == 1 {
@@ -458,6 +464,47 @@ impl SettingsPane {
             SettingsMsg::ElevenLabsAudioEventsChanged(on) => {
                 studio.prefs.elevenlabs_audio_events = on;
                 studio.prefs.save(&studio.host.dirs);
+            }
+            SettingsMsg::ElevenLabsVerifyKey => {
+                let key = studio
+                    .prefs
+                    .elevenlabs_api_key
+                    .as_deref()
+                    .map(str::trim)
+                    .unwrap_or_default()
+                    .to_owned();
+                if key.is_empty() {
+                    self.elevenlabs_status_message = "Please enter an API key first.".to_owned();
+                    self.elevenlabs_status_ok = false;
+                    return;
+                }
+                self.elevenlabs_verifying = true;
+                self.elevenlabs_status_message = "Connecting to ElevenLabs...".to_owned();
+                self.elevenlabs_status_ok = false;
+                let provider = concat_speech::ElevenLabsProvider::new(key);
+                spawn(
+                    move || provider.verify_api_key(),
+                    |studio, _, _, result| {
+                        let res = match result {
+                            Ok(ver) => Ok(ver.message),
+                            Err(e) => Err(e),
+                        };
+                        studio.handle(Msg::Settings(SettingsMsg::ElevenLabsKeyVerified(res)));
+                    },
+                );
+            }
+            SettingsMsg::ElevenLabsKeyVerified(result) => {
+                self.elevenlabs_verifying = false;
+                match result {
+                    Ok(msg) => {
+                        self.elevenlabs_status_message = msg;
+                        self.elevenlabs_status_ok = true;
+                    }
+                    Err(err) => {
+                        self.elevenlabs_status_message = err;
+                        self.elevenlabs_status_ok = false;
+                    }
+                }
             }
             SettingsMsg::ModelActivated(id) => {
                 if self.is_transcriber(&id) {
@@ -978,6 +1025,9 @@ impl SettingsPane {
             },
             elevenlabs_diarize: studio.prefs.elevenlabs_diarize,
             elevenlabs_audio_events: studio.prefs.elevenlabs_audio_events,
+            elevenlabs_verifying: self.elevenlabs_verifying,
+            elevenlabs_status_message: self.elevenlabs_status_message.as_str().into(),
+            elevenlabs_status_ok: self.elevenlabs_status_ok,
             // The keymap's rows as the page draws them: the chord each
             // action is on now, and whether that moved from the one it
             // ships on — which is the row's cue to offer its reset.

@@ -12139,13 +12139,19 @@ impl Studio {
 
         // The speech sheets, and the lists they choose from.
         let transcribers = installed(&self.settings.transcribers);
-        sync(
-            &models.caption_models,
-            transcribers
-                .iter()
-                .map(|model| SharedString::from(model.name.as_str()))
-                .collect(),
-        );
+        let caption_models: Vec<SharedString> =
+            if self.prefs.stt_provider.as_deref() == Some("elevenlabs") {
+                vec![
+                    SharedString::from("Scribe V2 (General, 90+ languages)"),
+                    SharedString::from("Scribe V2 Medical (Clinical & Medical)"),
+                ]
+            } else {
+                transcribers
+                    .iter()
+                    .map(|model| SharedString::from(model.name.as_str()))
+                    .collect()
+            };
+        sync(&models.caption_models, caption_models);
         sync(&models.caption_languages, self.captions.language_rows(self));
         app.set_captions(self.captions.data(self));
         let voices = installed(&self.settings.voices);

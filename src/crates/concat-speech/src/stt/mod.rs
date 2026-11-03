@@ -16,7 +16,7 @@ pub mod whisper;
 use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
 
-pub use elevenlabs::ElevenLabsProvider;
+pub use elevenlabs::{ElevenLabsProvider, VerificationResult};
 pub use preprocessor::AudioPreprocessor;
 use serde::{Deserialize, Serialize};
 pub use whisper::WhisperProvider;
