@@ -12089,7 +12089,7 @@ impl Studio {
         editor.set_media_selected_count(self.media.selected.len() as i32);
         editor.set_media_filter(self.media.filter);
         editor.set_media_jump_token(self.media_jump);
-        editor.set_importing(false);
+        editor.set_importing(self.media.importing);
 
         let (width, height) = self.output_size();
         editor.set_output_width(width as i32);

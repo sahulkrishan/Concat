@@ -465,6 +465,10 @@ export component MediaCard inherits Rectangle {
     /// modifier state at the moment of the press — `clicked` does not carry it
     property <bool> additive;
 
+    property <bool> pending: root.item.thumbnail.width == 0 && root.item.wave == "";
+    property <float> shimmer: root.pending ? 1.0 : 0.0;
+    animate shimmer { duration: 1.5s; easing: ease-in-out; iteration-count: -1; }
+
     // The whole card is the drag handle: dragging one onto the timeline is
     // how material gets into an edit. The DragArea only intercepts once the
     // press has travelled far enough to be a drag, so the TouchArea inside
@@ -556,11 +560,24 @@ export component MediaCard inherits Rectangle {
                     tint: root.mark;
                 }
 
+                if root.pending: Rectangle {
+                    x: -parent.width + (2 * parent.width * root.shimmer);
+                    y: 0;
+                    width: parent.width;
+                    height: parent.height;
+                    background: @linear-gradient(90deg,
+                        transparent 0%,
+                        transparent 25%,
+                        Theme.accent-soft.with-alpha(0.2) 50%,
+                        transparent 75%,
+                        transparent 100%);
+                }
+
                 // What everything else shows before its artwork exists. Large and
                 // faint on purpose: at the badge's own size and colour it read as
                 // a corner mark duplicated into the middle of the tile rather than
                 // as a placeholder.
-                if root.item.thumbnail.width == 0 && root.item.wave == "": Icon {
+                if root.pending: Icon {
                     x: (parent.width - self.width) / 2;
                     y: (parent.height - self.height) / 2;
                     glyph: root.badge;
