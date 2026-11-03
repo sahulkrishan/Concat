@@ -106,8 +106,23 @@ pub fn flatten_timeline_in(
                 | ModelClipKind::SoundLayer
                 | ModelClipKind::Shape => return None,
             };
+            let (audio_path, audio_source_offset) = if let Some(clean) = &clip.cleaned_audio
+                && clean.on
+            {
+                let path = project
+                    .media
+                    .iter()
+                    .find(|item| item.id == clean.copy)
+                    .map(|item| item.path.clone());
+                (path, clean.offset)
+            } else {
+                (None, 0.0)
+            };
+
             Some(ExportClip {
                 path: media.path.clone(),
+                audio_path,
+                audio_source_offset,
                 audio_stream: clip.audio_stream,
                 color_range: media.color_range,
                 source_start: clip.source_start,
@@ -342,6 +357,58 @@ mod tests {
         assert_eq!(clip.has_audio, Some(true));
         assert_eq!(clip.filter_chain, "");
         assert!(clip.effects.is_empty());
+    }
+
+    #[test]
+    fn a_cleaned_audio_clip_flattens_its_audio_path_when_active() {
+        let (mut editor, _, clip_id) = project_with_clip();
+        let clean_media_id = editor
+            .apply(Command::AddMedia {
+                item: NewMedia {
+                    path: "/project/cache/cleaned.wav".into(),
+                    name: "cleaned.wav".into(),
+                    duration: Some(10.0),
+                    kind: concat_project::model::MediaKind::Audio,
+                    width: None,
+                    height: None,
+                    frame_rate: None,
+                    frame_rate_fraction: None,
+                    video_codec: None,
+                    audio_codec: Some("pcm_s16le".into()),
+                    has_audio: true,
+                    audio_tracks: Vec::new(),
+                    origin: None,
+                    color_space: Default::default(),
+                },
+            })
+            .expect("adds clean media")
+            .created_id
+            .expect("media id");
+
+        editor
+            .apply(Command::LinkClipCleanAudio {
+                clip_id: clip_id.clone(),
+                copy_media_id: clean_media_id,
+                preset: "podcast".into(),
+                offset: 0.5,
+            })
+            .expect("links clean audio");
+
+        let flat = flatten_timeline(editor.project(), None);
+        assert_eq!(flat[0].path, "/footage/a.mp4");
+        assert_eq!(flat[0].audio_path, Some("/project/cache/cleaned.wav".into()));
+        assert_eq!(flat[0].audio_source_offset, 0.5);
+
+        editor
+            .apply(Command::SetClipCleanAudio {
+                clip_id,
+                on: false,
+            })
+            .expect("toggles off");
+
+        let flat_off = flatten_timeline(editor.project(), None);
+        assert_eq!(flat_off[0].path, "/footage/a.mp4");
+        assert_eq!(flat_off[0].audio_path, None);
     }
 
     #[test]

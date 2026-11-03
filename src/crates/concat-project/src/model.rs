@@ -1339,6 +1339,26 @@ pub struct Enhanced {
     pub offset: f64,
 }
 
+/// A clip's Clean-Up audio state, once it has a copy: see [`Clip::cleaned_audio`].
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CleanAudio {
+    /// The bin item the clip was cut from.
+    pub original: String,
+    /// The bin item holding the cleaned audio copy.
+    pub copy: String,
+    /// Whether the clip plays the cleaned audio copy.
+    pub on: bool,
+    /// Seconds into the original the copy starts at: a copy of the span the
+    /// clip covers, rather than of the whole file, starts partway in.
+    #[serde(default, skip_serializing_if = "is_zero_seconds")]
+    pub offset: f64,
+    /// The preset used for this clean-up.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub preset: String,
+}
+
 fn is_zero_seconds(seconds: &f64) -> bool {
     *seconds == 0.0
 }
@@ -2036,6 +2056,11 @@ pub struct Clip {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[serde(deserialize_with = "wire::maybe")]
     pub enhanced: Option<Enhanced>,
+    /// Audio clean-up: the media it was cut from and the cleaned audio copy
+    /// of it, and which of the two it plays.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(deserialize_with = "wire::maybe")]
+    pub cleaned_audio: Option<CleanAudio>,
     /// The overlay, when this is a text clip.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[serde(deserialize_with = "wire::maybe")]
@@ -2148,6 +2173,7 @@ impl Clip {
             detached_from: None,
             transition_in: None,
             enhanced: None,
+            cleaned_audio: None,
             text: None,
             shape: None,
             background: None,

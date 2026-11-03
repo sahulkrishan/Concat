@@ -10,7 +10,7 @@ import { Pane, PaneBody, PaneScroll } from "pane.slint";
 import { PaneKind, PaneSwitcher } from "pane-switcher.slint";
 import { EffectData } from "../demo/effects-panel.slint";
 import {
-    AdjustPanel, AppliedEntryData, AppliedParamData, AudioPanel, BackgroundRows, ProcessorRows,
+    AdjustPanel, AppliedEntryData, AppliedParamData, AudioPanel, BackgroundRows, CleanAudioPanel, ProcessorRows,
     TransitionChoiceData,
     CatalogueEntryData, ChainChoiceData, ColourKnobData, EnhancePanel, FilterPanel, PresetStack,
     SpeedPanel,
@@ -222,6 +222,10 @@ export component ConfigPane inherits Rectangle {
     callback clip-enhance-strength(strength: float);
     callback clip-enhance-preview();
     callback clip-enhance-run();
+    callback clip-clean-audio-run();
+    callback clip-clean-audio-set(on: bool);
+    callback clip-clean-audio-preset(preset: string);
+    callback clip-clean-audio-toggles(noise: bool, vocal: bool);
     callback transition-remove();
     callback transition-duration-set(seconds: float);
     callback transition-param-set(key: string, value: float);
@@ -811,6 +815,13 @@ export component ConfigPane inherits Rectangle {
                         selected: root.selected;
                         set(field, value) => { root.clip-set(field, value); }
                         commit => { root.clip-commit(); }
+                    }
+                    if !root.selected.batch-volume: CleanAudioPanel {
+                        selected: root.selected;
+                        clean-audio-run => { root.clip-clean-audio-run(); }
+                        clean-audio-set(on) => { root.clip-clean-audio-set(on); }
+                        clean-audio-preset(preset) => { root.clip-clean-audio-preset(preset); }
+                        clean-audio-toggles(noise, vocal) => { root.clip-clean-audio-toggles(noise, vocal); }
                     }
                     // The three treatments, between the mix and the library:
                     // they are chain links like any other, but they are the

@@ -11,7 +11,7 @@ import {
     SectionBody,
     SectionHeader,
 } from "../primitives/panel.slint";
-import { Button } from "../primitives/modal.slint";
+import { Button, Progress } from "../primitives/modal.slint";
 import { SegmentedControl } from "../primitives/segmented-control.slint";
 import { Select } from "../primitives/select.slint";
 import { SpeedGraph, SpeedRamp } from "speed-ramp.slint";
@@ -2599,6 +2599,123 @@ export component AudioPanel inherits VerticalLayout {
                 toggled(on) => {
                     root.set(ClipField.preserve-pitch, on ? 0 : 1);
                     root.commit();
+                }
+            }
+        }
+    }
+}
+
+/// Clean Audio: on-device background noise removal and vocal isolation
+/// paired with downstream DSP conditioning (EQ, de-esser, compressor, loudness).
+export component CleanAudioPanel inherits VerticalLayout {
+    in property <SelectedClipData> selected;
+
+    callback clean-audio-run();
+    callback clean-audio-set(bool);
+    callback clean-audio-preset(string);
+    callback clean-audio-toggles(bool, bool);
+
+    property <bool> running: root.selected.clean-audio-progress >= 0;
+
+    property <[string]> preset-options: [
+        I18n.t("clipInspector.presetPodcast"),
+        I18n.t("clipInspector.presetCrisp"),
+        I18n.t("clipInspector.presetNoiseOnly"),
+        I18n.t("clipInspector.presetVocalOnly"),
+        I18n.t("clipInspector.presetCustom"),
+    ];
+
+    pure function preset-index(id: string) -> int {
+        return id == "podcast" ? 0
+            : id == "crisp" ? 1
+            : id == "noise-only" ? 2
+            : id == "vocal-only" ? 3
+            : 4;
+    }
+
+    Section {
+        SectionHeader {
+            title: I18n.t("clipInspector.cleanAudio");
+            switchable: root.selected.clean-audio-linked;
+            on: root.selected.clean-audio-on;
+            switched(on) => { root.clean-audio-set(on); }
+            HelpButton {
+                text: I18n.t("clipInspector.cleanAudioExplain");
+            }
+        }
+
+        SectionBody {
+            if root.running: VerticalLayout {
+                spacing: 6px;
+                Row {
+                    label: I18n.t("clipInspector.cleanProgress");
+                    Text {
+                        text: root.selected.clean-audio-stage != ""
+                            ? root.selected.clean-audio-stage
+                            : I18n.t1("clipInspector.cleaningAudio", "\{Math.round(root.selected.clean-audio-progress * 100)}");
+                        color: Theme.accent;
+                        font-size: Theme.fs;
+                        vertical-alignment: center;
+                    }
+                }
+                Progress {
+                    value: root.selected.clean-audio-progress;
+                    live: true;
+                }
+            }
+
+            if !root.running && root.selected.clean-audio-linked: Note {
+                text: root.selected.clean-audio-on
+                    ? I18n.t("clipInspector.cleanShowingCleaned")
+                    : I18n.t("clipInspector.cleanShowingOriginal");
+            }
+
+            Row {
+                label: I18n.t("clipInspector.cleanPreset");
+                Select {
+                    options: root.preset-options;
+                    current: root.preset-index(root.selected.clean-audio-preset);
+                    enabled: !root.running;
+                    changed(index) => {
+                        let p = index == 0 ? "podcast"
+                            : index == 1 ? "crisp"
+                            : index == 2 ? "noise-only"
+                            : index == 3 ? "vocal-only"
+                            : "custom";
+                        root.clean-audio-preset(p);
+                    }
+                }
+            }
+
+            SwitchRow {
+                label: I18n.t("clipInspector.cleanRemoveNoise");
+                checked: root.selected.clean-audio-remove-noise;
+                toggled(on) => {
+                    if (!root.running) {
+                        root.clean-audio-toggles(on, root.selected.clean-audio-isolate-vocals);
+                    }
+                }
+            }
+
+            SwitchRow {
+                label: I18n.t("clipInspector.cleanIsolateVocals");
+                checked: root.selected.clean-audio-isolate-vocals;
+                toggled(on) => {
+                    if (!root.running) {
+                        root.clean-audio-toggles(root.selected.clean-audio-remove-noise, on);
+                    }
+                }
+            }
+
+            Row {
+                Rectangle { horizontal-stretch: 1; }
+                Button {
+                    primary: !root.running;
+                    danger: root.running;
+                    label: root.running ? I18n.t("clipInspector.cleanTerminate")
+                        : (root.selected.clean-audio-linked ? I18n.t("clipInspector.cleanAgain") : I18n.t("clipInspector.cleanRun"));
+                    enabled: root.running || (!root.selected.clean-audio-busy && (root.selected.clean-audio-remove-noise || root.selected.clean-audio-isolate-vocals));
+                    clicked => { root.clean-audio-run(); }
                 }
             }
         }

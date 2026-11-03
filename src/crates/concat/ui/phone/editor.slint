@@ -15,7 +15,7 @@ import {
     CategoryPillBar, GroupPillBar, MediaCard, MediaItemData, PresetGrid, ShelfGrid, ShelfSearch,
 } from "../workspace/media-pane.slint";
 import {
-    AdjustPanel, AudioPanel, EnhancePanel, FilterPanel, Library, PresetStack, ProcessorRows,
+    AdjustPanel, AudioPanel, CleanAudioPanel, EnhancePanel, FilterPanel, Library, PresetStack, ProcessorRows,
     SpeedPanel, VideoPanel,
 } from "../inspector/clip-inspector.slint";
 import { TextPanel } from "../inspector/text-panel.slint";
@@ -1611,6 +1611,13 @@ export component PhoneEditor inherits Rectangle {
                 audio-tracks: Editor.audio-tracks;
                 set(field, value) => { Editor.clip-set(field, value); }
                 commit => { Editor.clip-commit(); }
+            }
+            if !Editor.selected-clip.batch-volume: CleanAudioPanel {
+                selected: Editor.selected-clip;
+                clean-audio-run => { Editor.clip-clean-audio-run(); }
+                clean-audio-set(on) => { Editor.clip-clean-audio-set(on); }
+                clean-audio-preset(preset) => { Editor.clip-clean-audio-preset(preset); }
+                clean-audio-toggles(noise, vocal) => { Editor.clip-clean-audio-toggles(noise, vocal); }
             }
             if !Editor.selected-clip.batch-volume: ProcessorRows {
                 applied: Editor.applied-audio;

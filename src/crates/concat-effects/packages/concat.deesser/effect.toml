@@ -1,0 +1,21 @@
+[effect]
+id = "concat.deesser"
+name = "De-Esser"
+kind = "audio"
+category = "Clean"
+order = 43
+intensity = "amount"
+aliases = ["deesser"]
+description = "Tames harsh sibilance and whistling 's' sounds."
+
+[[param]]
+key = "amount"
+label = "Amount"
+min = 0
+max = 100
+default = 50
+step = 1
+unit = "%"
+
+[ffmpeg]
+chain = "deesser=i={fixed(amount / 100 * 0.8, 2)}:m=0.5:f=ess"

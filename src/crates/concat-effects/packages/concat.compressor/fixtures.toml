@@ -1,0 +1,13 @@
+[[case]]
+name = "default"
+chain = "acompressor=threshold=0.35:ratio=3.5:attack=15:release=120,alimiter=limit=0.95"
+
+[[case]]
+name = "minimum"
+at = "min"
+chain = "acompressor=threshold=0.50:ratio=2.0:attack=15:release=120,alimiter=limit=0.95"
+
+[[case]]
+name = "maximum"
+at = "max"
+chain = "acompressor=threshold=0.20:ratio=5.0:attack=15:release=120,alimiter=limit=0.95"

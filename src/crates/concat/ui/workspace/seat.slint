@@ -285,6 +285,10 @@ export component Seat inherits Rectangle {
             clip-enhance-strength(strength) => { Editor.clip-enhance-strength(strength); }
             clip-enhance-preview => { Editor.clip-enhance-preview(); }
             clip-enhance-run => { Editor.clip-enhance-run(); }
+            clip-clean-audio-run => { Editor.clip-clean-audio-run(); }
+            clip-clean-audio-set(on) => { Editor.clip-clean-audio-set(on); }
+            clip-clean-audio-preset(preset) => { Editor.clip-clean-audio-preset(preset); }
+            clip-clean-audio-toggles(noise, vocal) => { Editor.clip-clean-audio-toggles(noise, vocal); }
             transition-remove => { Editor.transition-remove(); }
             transition-duration-set(seconds) => { Editor.transition-duration-set(seconds); }
             transition-param-set(key, value) => { Editor.transition-param-set(key, value); }

@@ -1,0 +1,30 @@
+[effect]
+id = "concat.podcast-eq"
+name = "Podcast EQ"
+kind = "audio"
+category = "Tone"
+order = 23
+intensity = "clarity"
+aliases = ["podcast-eq"]
+description = "Vocal warmth and clarity for podcasting: cuts sub-bass rumble, tames boxiness, and boosts presence."
+
+[[param]]
+key = "clarity"
+label = "Clarity"
+min = 0
+max = 12
+default = 4
+step = 0.5
+unit = "dB"
+
+[[param]]
+key = "warmth"
+label = "Warmth"
+min = -6
+max = 6
+default = 2
+step = 0.5
+unit = "dB"
+
+[ffmpeg]
+chain = "highpass=f=80,equalizer=f=300:t=q:w=1.2:g=-2.5,equalizer=f=120:t=q:w=1.0:g={fixed(warmth, 1)},equalizer=f=3500:t=q:w=1.0:g={fixed(clarity, 1)},treble=g={fixed(clarity * 0.6, 1)}:f=8000:w=0.8,alimiter=limit=0.95"
