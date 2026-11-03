@@ -189,6 +189,7 @@ export component Seat inherits Rectangle {
             stroke-erase: Editor.stroke-erase;
             painting: Editor.painting && Editor.selected-clip.cutout == 2;
             picking: Editor.picking-colour && !SourcePreview.open;
+            audio-processing: Editor.audio-processing;
 
             play-toggled => { Editor.play-toggled(); }
             seek(seconds) => {

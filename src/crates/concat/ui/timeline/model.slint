@@ -132,6 +132,8 @@ export struct ClipData {
     /// The frames a picture clip tiles along its body; `frames` is 0 when
     /// there are none yet.
     strip: StripData,
+    /// Clean audio processing progress (0.0..1.0), or -1 if not running
+    clean-audio-progress: float,
 }
 
 

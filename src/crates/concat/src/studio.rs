@@ -10288,6 +10288,11 @@ impl Studio {
                         wave_span: wave.2,
                         has_audio: self.clip_has_sound(clip),
                         strip: self.strip_of(clip),
+                        clean_audio_progress: self
+                            .clean_audio_jobs
+                            .get(&clip.id)
+                            .map(|(_, fraction)| *fraction)
+                            .unwrap_or(-1.0),
                     }
                 })
                 .collect(),
@@ -10325,6 +10330,9 @@ impl Studio {
         editor.set_preview_duration(self.duration());
         editor.set_playhead_free(!self.prefs.playhead_stops_at_end);
         editor.set_playing(self.playing);
+        editor.set_audio_processing(
+            !self.clean_audio_jobs.is_empty() || self.host.playback.is_decoding(),
+        );
         self.publish_frame(app);
         sync(&models.stage, self.stage_items());
         sync(&models.guides, self.stage_guides.clone());

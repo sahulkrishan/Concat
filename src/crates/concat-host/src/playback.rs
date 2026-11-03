@@ -337,6 +337,8 @@ pub trait PlaybackEvents: Send + Sync + 'static {
     fn position(&self, seconds: f64);
     /// A failure the user should see.
     fn error(&self, message: String);
+    /// An audio decode completed and the mix resynced.
+    fn decoded(&self) {}
 }
 
 /// Decoded audio: 16-bit little-endian stereo at [`PCM_RATE`] inside a WAV
@@ -904,6 +906,11 @@ impl Playback {
         self.shared.playing.load(Ordering::Relaxed)
     }
 
+    /// Whether any audio stream or filter is currently being decoded in the background.
+    pub fn is_decoding(&self) -> bool {
+        !locked(&self.decoding).is_empty()
+    }
+
     /// The loudest sample each side has played since the last call, left
     /// and right, linear: 1.0 is full scale and above it a mix that
     /// clipped. Reading resets them: the meters' feed.
@@ -1130,6 +1137,7 @@ fn decode_worker(playback: &Arc<Playback>) {
         }
         locked(&playback.decoding).remove(&job.key);
         playback.resync();
+        playback.events.decoded();
     }
 }
 

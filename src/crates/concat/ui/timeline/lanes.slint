@@ -432,6 +432,15 @@ component Clip inherits Rectangle {
             ramp-h: root.fade-h;
         }
 
+        // A progress bar along the bottom of the clip while clean audio is processing
+        if root.item.clean-audio-progress >= 0: Rectangle {
+            x: 0;
+            y: parent.height - 3px;
+            width: parent.width * Math.clamp(root.item.clean-audio-progress, 0.05, 1.0);
+            height: 3px;
+            background: Theme.accent;
+        }
+
 
     }
 
@@ -461,7 +470,8 @@ component Clip inherits Rectangle {
             x: root.text-x;
             y: 0;
             width: parent.width - root.text-x - 7px
-                - (root.item.fx && root.width > 60px ? root.chip-w + 6px : 0px);
+                - (root.item.fx && root.width > 60px ? root.chip-w + 6px : 0px)
+                - (root.item.clean-audio-progress >= 0 && root.width > 80px ? root.chip-w + 24px : 0px);
             height: parent.height;
             text: root.item.name;
             color: Theme.clip-ink;
@@ -480,6 +490,29 @@ component Clip inherits Rectangle {
             fade-in: root.item.fade-in;
             fade-out: root.item.fade-out;
             px-per-second: root.px-per-second;
+        }
+
+        // An audio processor progress chip when audio processing is active on the clip
+        if root.item.clean-audio-progress >= 0 && root.width > 70px: Rectangle {
+            x: parent.width - self.width - 4px - (root.item.fx && root.width > 60px ? root.chip-w + 4px : 0px);
+            y: (parent.height - self.height) / 2;
+            width: Math.max(root.chip-w + 18px, 38px);
+            height: root.chip;
+            border-radius: Theme.r-xs;
+            background: Theme.accent;
+
+            Text {
+                x: 0;
+                y: 0;
+                width: parent.width;
+                height: parent.height;
+                text: "\{Math.round(root.item.clean-audio-progress * 100)}%";
+                color: Theme.on-accent;
+                font-size: Math.max(8px, root.chip * 0.55);
+                font-weight: 700;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
         }
 
         // An `fx` chip when effects are live on the clip, so a styled clip is

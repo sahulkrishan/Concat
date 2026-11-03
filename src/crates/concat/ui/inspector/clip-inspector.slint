@@ -2662,6 +2662,24 @@ export component CleanAudioPanel inherits VerticalLayout {
                     value: root.selected.clean-audio-progress;
                     live: true;
                 }
+                Rectangle {
+                    background: Theme.accent.with-alpha(0.12);
+                    border-radius: Theme.r-sm;
+                    border-width: 1px;
+                    border-color: Theme.accent.with-alpha(0.3);
+                    HorizontalLayout {
+                        padding-left: Theme.pad;
+                        padding-right: Theme.pad;
+                        padding-top: 6px;
+                        padding-bottom: 6px;
+                        Text {
+                            text: I18n.t("clipInspector.cleanAudioPlayingUnmodified");
+                            color: Theme.fg;
+                            font-size: Theme.fs-sm;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
             }
 
             if !root.running && root.selected.clean-audio-linked: Note {

@@ -109,6 +109,14 @@ impl PlaybackEvents for Events {
             });
         });
     }
+
+    fn decoded(&self) {
+        let _ = slint::invoke_from_event_loop(move || {
+            Shell::with(|shell, app| {
+                shell.studio.borrow().publish(&app, &shell.models);
+            });
+        });
+    }
 }
 
 /// Everything a handler needs: the window, the state and the models the

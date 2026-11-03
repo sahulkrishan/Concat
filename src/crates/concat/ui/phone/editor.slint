@@ -733,6 +733,11 @@ export component PhoneEditor inherits Rectangle {
                     font-family: Theme.font-technical;
                     font-size: Theme.fs-xs;
                 }
+                if Editor.audio-processing: Text {
+                    text: I18n.t("previewPane.processingAudio");
+                    color: Theme.accent;
+                    font-size: Theme.fs-xs;
+                }
             }
 
             VerticalLayout {

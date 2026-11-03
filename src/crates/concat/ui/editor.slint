@@ -248,6 +248,8 @@ export global Editor {
     in-out property <[EffectData]> audio-effects;
     in-out property <float> level;
     in-out property <float> peak;
+    /// True while clean audio or audio filters are being processed/decoded in background.
+    in-out property <bool> audio-processing: false;
     callback add-effect(audio: bool);
     callback remove-effect(id: int);
 
