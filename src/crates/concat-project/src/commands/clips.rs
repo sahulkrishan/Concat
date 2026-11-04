@@ -7,6 +7,7 @@
 //! everything these arms share lives in the parent module.
 
 use super::*;
+use crate::model::CleanAudio;
 
 /// Applies one of this module's commands. Any other is a routing error.
 pub(super) fn apply(
@@ -539,6 +540,52 @@ pub(super) fn apply(
             let applied = assign(&mut clip.media_id, media)
                 | assign(&mut clip.source_start, start)
                 | assign(&mut clip.enhanced, Some(Enhanced { on, ..link }));
+            Ok(Outcome {
+                created_id: None,
+                applied,
+            })
+        }
+
+        Command::SetClipCleanAudio { clip_id, on } => {
+            let timeline = project.active_mut();
+            let Some(index) = timeline.clips.iter().position(|clip| clip.id == clip_id) else {
+                return Ok(Outcome::default());
+            };
+            let Some(link) = timeline.clips[index].cleaned_audio.clone() else {
+                return Ok(Outcome::default());
+            };
+            let clip = timeline.clip_at_mut(index);
+            let applied = assign(&mut clip.cleaned_audio, Some(CleanAudio { on, ..link }));
+            Ok(Outcome {
+                created_id: None,
+                applied,
+            })
+        }
+
+        Command::LinkClipCleanAudio {
+            clip_id,
+            copy_media_id,
+            preset,
+            offset,
+        } => {
+            let timeline = project.active_mut();
+            let Some(index) = timeline.clips.iter().position(|clip| clip.id == clip_id) else {
+                return Ok(Outcome::default());
+            };
+            let clip = timeline.clip_at_mut(index);
+            let original = clip
+                .cleaned_audio
+                .as_ref()
+                .map(|link| link.original.clone())
+                .unwrap_or_else(|| clip.media_id.clone());
+            let link = CleanAudio {
+                original,
+                copy: copy_media_id,
+                on: true,
+                offset,
+                preset,
+            };
+            let applied = assign(&mut clip.cleaned_audio, Some(link));
             Ok(Outcome {
                 created_id: None,
                 applied,

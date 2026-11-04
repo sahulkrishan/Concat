@@ -21,6 +21,7 @@
 
 pub mod brush;
 pub mod cards;
+pub mod clean_audio;
 pub mod consolidate;
 pub mod crash;
 pub mod cutout;
@@ -51,6 +52,7 @@ pub mod updates;
 pub mod voices;
 
 pub use brush::{Brushes, RegionRequest};
+pub use clean_audio::{CleanAudioEngine, CleanProgress, CleanRequest, CleanResult, CleanStage};
 pub use cutout::{AnalyseRequest, Cutouts};
 pub use dirs::AppDirs;
 pub use enhance::{EnhanceRequest, Enhancers};

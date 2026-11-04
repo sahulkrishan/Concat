@@ -1,0 +1,13 @@
+[[case]]
+name = "default"
+chain = "deesser=i=0.40:m=0.5:f=0.5:s=o"
+
+[[case]]
+name = "minimum"
+at = "min"
+chain = "deesser=i=0.00:m=0.5:f=0.5:s=o"
+
+[[case]]
+name = "maximum"
+at = "max"
+chain = "deesser=i=0.80:m=0.5:f=0.5:s=o"

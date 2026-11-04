@@ -635,6 +635,26 @@ pub enum Command {
         /// The copy when true, the original when false.
         on: bool,
     },
+    /// Sets a clip's cleaned audio active or original. A no-op for a
+    /// clip Clean Audio has not made a copy for.
+    SetClipCleanAudio {
+        /// The clip.
+        clip_id: String,
+        /// The cleaned copy when true, original when false.
+        on: bool,
+    },
+    /// Links a cleaned audio copy to a clip.
+    LinkClipCleanAudio {
+        /// The clip.
+        clip_id: String,
+        /// The media item id of the cleaned audio file.
+        copy_media_id: String,
+        /// The preset used for this clean-up.
+        preset: String,
+        /// Offset into original file if a subspan was cleaned.
+        #[serde(default)]
+        offset: f64,
+    },
     /// A freeze frame at `time`: splits `clip_id`, inserts a still of
     /// `duration` on the same track, and ripples later clips on that track
     /// by `duration`. Video needs a probed `still` (host-extracted jpg);
@@ -1296,6 +1316,8 @@ pub fn apply(
         | Command::FreezeFrame { .. }
         | Command::ReplaceClipMedia { .. }
         | Command::SetClipEnhanced { .. }
+        | Command::SetClipCleanAudio { .. }
+        | Command::LinkClipCleanAudio { .. }
         | Command::MergeClips { .. }
         | Command::ConsolidateClips { .. }
         | Command::RemoveClips { .. }) => clips::apply(project, mint, command),

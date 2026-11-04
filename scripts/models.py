@@ -45,6 +45,7 @@ TABLES = {
     "tts": CRATES / "concat-speech" / "src" / "tts.rs",
     "chatterbox": CRATES / "concat-speech" / "src" / "chatterbox.rs",
     "whisper": CRATES / "concat-speech" / "src" / "transcribe.rs",
+    "clean_audio": CRATES / "concat-host" / "src" / "clean_audio.rs",
 }
 
 # The bundles a release publishes, as build-app.yml and mobile.yml name

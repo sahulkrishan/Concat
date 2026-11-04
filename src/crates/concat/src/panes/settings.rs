@@ -198,6 +198,7 @@ impl ModelState {
 fn model_sources(id: &str) -> Option<(String, Vec<String>)> {
     concat_speech::Transcriber::model_sources(id)
         .or_else(|| concat_speech::Speech::model_sources(id))
+        .or_else(|| concat_host::clean_audio::model_sources(id))
 }
 
 /// A failed download, as the row under the model says it.
@@ -254,6 +255,10 @@ pub struct SettingsPane {
     pub transcribers: Vec<ModelState>,
     /// The voice models, installed or not.
     pub voices: Vec<ModelState>,
+    /// The noise removal models, installed or not.
+    pub noise_models: Vec<ModelState>,
+    /// The vocal isolation models, installed or not.
+    pub vocal_models: Vec<ModelState>,
     /// The Version page's list: the stable releases from 0.2.5 on, newest
     /// first, once GitHub has been asked.
     pub releases: Vec<Release>,
@@ -507,7 +512,11 @@ impl SettingsPane {
                 }
             }
             SettingsMsg::ModelActivated(id) => {
-                if self.is_transcriber(&id) {
+                if self.is_noise_model(&id) {
+                    studio.prefs.noise_removal_model = Some(id);
+                } else if self.is_vocal_model(&id) {
+                    studio.prefs.vocal_isolation_model = Some(id);
+                } else if self.is_transcriber(&id) {
                     studio.prefs.transcriber_model = Some(id);
                 } else {
                     studio.prefs.tts_model = Some(id);
@@ -544,14 +553,18 @@ impl SettingsPane {
                 }
             }
             SettingsMsg::ModelCancel(id) => {
-                if self.is_transcriber(&id) {
+                if self.is_clean_audio(&id) {
+                    studio.host.clean_audio.cancel_download();
+                } else if self.is_transcriber(&id) {
                     studio.host.transcriber.cancel_download();
                 } else {
                     studio.host.speech.cancel_download();
                 }
             }
             SettingsMsg::ModelRemove(id) => {
-                let result = if self.is_transcriber(&id) {
+                let result = if self.is_clean_audio(&id) {
+                    studio.host.clean_audio.delete_model(&studio.host.dirs, &id)
+                } else if self.is_transcriber(&id) {
                     studio.host.transcriber.delete_model(&studio.host.dirs, &id)
                 } else {
                     studio.host.speech.delete_model(&studio.host.dirs, &id)
@@ -590,9 +603,13 @@ impl SettingsPane {
                 match result {
                     Ok(()) => {
                         studio.notify(&t("settings.modelReady"), false);
-                        if self.is_transcriber(&id) && studio.prefs.transcriber_model.is_none() {
+                        if self.is_noise_model(&id) && studio.prefs.noise_removal_model.is_none() {
+                            studio.prefs.noise_removal_model = Some(id.clone());
+                        } else if self.is_vocal_model(&id) && studio.prefs.vocal_isolation_model.is_none() {
+                            studio.prefs.vocal_isolation_model = Some(id.clone());
+                        } else if self.is_transcriber(&id) && studio.prefs.transcriber_model.is_none() {
                             studio.prefs.transcriber_model = Some(id.clone());
-                        } else if !self.is_transcriber(&id) && studio.prefs.tts_model.is_none() {
+                        } else if !self.is_transcriber(&id) && !self.is_clean_audio(&id) && studio.prefs.tts_model.is_none() {
                             studio.prefs.tts_model = Some(id.clone());
                         }
                         studio.prefs.save(&studio.host.dirs);
@@ -859,7 +876,7 @@ impl SettingsPane {
         }
     }
 
-    /// The two model lists, from what is on disk. A download in flight
+    /// The model lists, from what is on disk. A download in flight
     /// keeps its progress across the rebuild.
     fn refresh(&mut self, studio: &mut Studio) {
         let dirs = &studio.host.dirs;
@@ -867,6 +884,8 @@ impl SettingsPane {
             .transcribers
             .iter()
             .chain(self.voices.iter())
+            .chain(self.noise_models.iter())
+            .chain(self.vocal_models.iter())
             .filter(|model| model.fetched.is_some())
             .map(|model| (model.id.clone(), (model.fetched, model.unpacking)))
             .collect();
@@ -874,10 +893,14 @@ impl SettingsPane {
             .transcribers
             .iter()
             .chain(self.voices.iter())
+            .chain(self.noise_models.iter())
+            .chain(self.vocal_models.iter())
             .filter_map(|model| Some((model.id.clone(), model.failure.clone()?)))
             .collect();
         let chosen_transcriber = studio.prefs.transcriber_model.clone();
         let chosen_voice = studio.prefs.tts_model.clone();
+        let chosen_noise = studio.prefs.noise_removal_model.clone();
+        let chosen_vocal = studio.prefs.vocal_isolation_model.clone();
         if let Ok(status) = concat_speech::Transcriber::status(dirs) {
             self.transcribers = status
                 .models
@@ -929,9 +952,58 @@ impl SettingsPane {
                 })
                 .collect();
         }
+        if let Ok(status) = concat_host::CleanAudioEngine::status(dirs) {
+            self.noise_models = status
+                .models
+                .iter()
+                .filter(|m| !m.is_vocal_isolation)
+                .map(|model| {
+                    let (fetched, unpacking) =
+                        downloading.get(&model.id).copied().unwrap_or((None, false));
+                    ModelState {
+                        id: model.id.clone(),
+                        name: model.label.clone(),
+                        note: model.blurb.clone(),
+                        megabytes: model.size_bytes as f32 / 1_000_000.0,
+                        accuracy: 4,
+                        installed: model.downloaded,
+                        active: chosen_noise.as_deref() == Some(model.id.as_str()),
+                        fetched,
+                        unpacking,
+                        failure: failed.get(&model.id).cloned(),
+                    }
+                })
+                .collect();
+            self.vocal_models = status
+                .models
+                .iter()
+                .filter(|m| m.is_vocal_isolation)
+                .map(|model| {
+                    let (fetched, unpacking) =
+                        downloading.get(&model.id).copied().unwrap_or((None, false));
+                    ModelState {
+                        id: model.id.clone(),
+                        name: model.label.clone(),
+                        note: model.blurb.clone(),
+                        megabytes: model.size_bytes as f32 / 1_000_000.0,
+                        accuracy: 5,
+                        installed: model.downloaded,
+                        active: chosen_vocal.as_deref() == Some(model.id.as_str()),
+                        fetched,
+                        unpacking,
+                        failure: failed.get(&model.id).cloned(),
+                    }
+                })
+                .collect();
+        }
         // An engine with nothing chosen falls back to whatever is installed,
         // rather than silently having no model at all.
-        for list in [&mut self.transcribers, &mut self.voices] {
+        for list in [
+            &mut self.transcribers,
+            &mut self.voices,
+            &mut self.noise_models,
+            &mut self.vocal_models,
+        ] {
             if !list.iter().any(|model| model.active && model.installed)
                 && let Some(first) = list.iter_mut().find(|model| model.installed)
             {
@@ -944,16 +1016,31 @@ impl SettingsPane {
         self.transcribers.iter().any(|model| model.id == id)
     }
 
+    fn is_noise_model(&self, id: &str) -> bool {
+        self.noise_models.iter().any(|model| model.id == id)
+    }
+
+    fn is_vocal_model(&self, id: &str) -> bool {
+        self.vocal_models.iter().any(|model| model.id == id)
+    }
+
+    fn is_clean_audio(&self, id: &str) -> bool {
+        self.is_noise_model(id) || self.is_vocal_model(id)
+    }
+
     fn model_mut(&mut self, id: &str) -> Option<&mut ModelState> {
         self.transcribers
             .iter_mut()
             .chain(self.voices.iter_mut())
+            .chain(self.noise_models.iter_mut())
+            .chain(self.vocal_models.iter_mut())
             .find(|model| model.id == id)
     }
 
     /// Starts a download on a worker. Its reports come back as messages.
     fn download(&mut self, id: &str, studio: &Studio) {
         let transcriber = self.is_transcriber(id);
+        let clean_audio = self.is_clean_audio(id);
         let Some(model) = self.model_mut(id) else {
             return;
         };
@@ -966,21 +1053,35 @@ impl SettingsPane {
         let dirs = studio.host.dirs.clone();
         let whisper = Arc::clone(&studio.host.transcriber);
         let kokoro = Arc::clone(&studio.host.speech);
+        let cleaner = Arc::clone(&studio.host.clean_audio);
         spawn(
             move || {
-                let report = |progress: concat_speech::DownloadProgress| {
-                    let msg = SettingsMsg::ModelProgress {
-                        id: progress.id,
-                        fetched: progress.received as f32 / 1_000_000.0,
-                        total: (progress.total > 0).then(|| progress.total as f32 / 1_000_000.0),
-                        unpacking: progress.unpacking,
+                let result = if clean_audio {
+                    let report = |progress: concat_host::clean_audio::ModelDownloadProgress| {
+                        let msg = SettingsMsg::ModelProgress {
+                            id: progress.id,
+                            fetched: progress.received as f32 / 1_000_000.0,
+                            total: (progress.total > 0).then(|| progress.total as f32 / 1_000_000.0),
+                            unpacking: progress.unpacking,
+                        };
+                        on_ui(move |studio, _, _| studio.handle(Msg::Settings(msg)));
                     };
-                    on_ui(move |studio, _, _| studio.handle(Msg::Settings(msg)));
-                };
-                let result = if transcriber {
-                    whisper.download_model(&dirs, &id, report)
+                    cleaner.download_model(&dirs, &id, report)
                 } else {
-                    kokoro.download_model(&dirs, &id, report)
+                    let report = |progress: concat_speech::DownloadProgress| {
+                        let msg = SettingsMsg::ModelProgress {
+                            id: progress.id,
+                            fetched: progress.received as f32 / 1_000_000.0,
+                            total: (progress.total > 0).then(|| progress.total as f32 / 1_000_000.0),
+                            unpacking: progress.unpacking,
+                        };
+                        on_ui(move |studio, _, _| studio.handle(Msg::Settings(msg)));
+                    };
+                    if transcriber {
+                        whisper.download_model(&dirs, &id, report)
+                    } else {
+                        kokoro.download_model(&dirs, &id, report)
+                    }
                 };
                 (id, result)
             },
@@ -998,6 +1099,16 @@ impl SettingsPane {
     /// The voice list's rows.
     pub fn voice_rows(&self) -> Vec<ModelData> {
         self.voices.iter().map(ModelState::row).collect()
+    }
+
+    /// The noise removal models list's rows.
+    pub fn noise_model_rows(&self) -> Vec<ModelData> {
+        self.noise_models.iter().map(ModelState::row).collect()
+    }
+
+    /// The vocal isolation models list's rows.
+    pub fn vocal_model_rows(&self) -> Vec<ModelData> {
+        self.vocal_models.iter().map(ModelState::row).collect()
     }
 
     /// The sheet as Slint shows it.
@@ -1078,6 +1189,8 @@ impl SettingsPane {
                 let on_disk: Vec<&ModelState> = installed(&self.transcribers)
                     .into_iter()
                     .chain(installed(&self.voices))
+                    .chain(installed(&self.noise_models))
+                    .chain(installed(&self.vocal_models))
                     .collect();
                 let megabytes: f32 = on_disk.iter().map(|model| model.megabytes).sum();
                 tf(

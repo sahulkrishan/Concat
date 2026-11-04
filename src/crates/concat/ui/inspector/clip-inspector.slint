@@ -11,7 +11,7 @@ import {
     SectionBody,
     SectionHeader,
 } from "../primitives/panel.slint";
-import { Button } from "../primitives/modal.slint";
+import { Button, Progress } from "../primitives/modal.slint";
 import { SegmentedControl } from "../primitives/segmented-control.slint";
 import { Select } from "../primitives/select.slint";
 import { SpeedGraph, SpeedRamp } from "speed-ramp.slint";
@@ -2474,6 +2474,10 @@ export component AudioPanel inherits VerticalLayout {
     init => { root.seed(); }
     changed selected => { root.seed(); }
 
+    if root.selected.audio-loading: Note {
+        text: I18n.t("clipInspector.audioTrackLoading");
+    }
+
     if root.choosing: Section {
         first: true;
         source := SectionHeader {
@@ -2599,6 +2603,203 @@ export component AudioPanel inherits VerticalLayout {
                 toggled(on) => {
                     root.set(ClipField.preserve-pitch, on ? 0 : 1);
                     root.commit();
+                }
+            }
+        }
+    }
+}
+
+/// Clean Audio: on-device background noise removal and vocal isolation
+/// paired with downstream DSP conditioning (EQ, de-esser, compressor, loudness).
+export component CleanAudioPanel inherits VerticalLayout {
+    in property <SelectedClipData> selected;
+
+    callback clean-audio-run();
+    callback clean-audio-set(bool);
+    callback clean-audio-preset(string);
+    callback clean-audio-toggles(bool, bool);
+    callback clean-audio-param(string, float);
+
+    property <bool> running: root.selected.clean-audio-progress >= 0;
+
+    property <[string]> preset-options: [
+        I18n.t("clipInspector.presetPodcast"),
+        I18n.t("clipInspector.presetCrisp"),
+        I18n.t("clipInspector.presetNoiseOnly"),
+        I18n.t("clipInspector.presetVocalOnly"),
+        I18n.t("clipInspector.presetCustom"),
+    ];
+
+    pure function preset-index(id: string) -> int {
+        return id == "podcast" ? 0
+            : id == "crisp" ? 1
+            : id == "noise-only" ? 2
+            : id == "vocal-only" ? 3
+            : 4;
+    }
+
+    Section {
+        SectionHeader {
+            title: I18n.t("clipInspector.cleanAudio");
+            switchable: root.selected.clean-audio-linked;
+            on: root.selected.clean-audio-on;
+            switched(on) => { root.clean-audio-set(on); }
+            HelpButton {
+                text: I18n.t("clipInspector.cleanAudioExplain");
+            }
+        }
+
+        SectionBody {
+            if root.running: VerticalLayout {
+                spacing: 6px;
+                Row {
+                    label: I18n.t("clipInspector.cleanProgress");
+                    Text {
+                        text: root.selected.clean-audio-stage != ""
+                            ? root.selected.clean-audio-stage
+                            : I18n.t1("clipInspector.cleaningAudio", "\{Math.round(root.selected.clean-audio-progress * 100)}");
+                        color: Theme.accent;
+                        font-size: Theme.fs;
+                        vertical-alignment: center;
+                    }
+                }
+                Progress {
+                    value: root.selected.clean-audio-progress;
+                    live: true;
+                }
+                Rectangle {
+                    background: Theme.accent.with-alpha(0.12);
+                    border-radius: Theme.r-sm;
+                    border-width: 1px;
+                    border-color: Theme.accent.with-alpha(0.3);
+                    HorizontalLayout {
+                        padding-left: Theme.pad;
+                        padding-right: Theme.pad;
+                        padding-top: 6px;
+                        padding-bottom: 6px;
+                        Text {
+                            text: I18n.t("clipInspector.cleanAudioPlayingUnmodified");
+                            color: Theme.fg;
+                            font-size: Theme.fs-sm;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+            }
+
+            if !root.running && root.selected.clean-audio-linked: Note {
+                text: root.selected.clean-audio-on
+                    ? I18n.t("clipInspector.cleanShowingCleaned")
+                    : I18n.t("clipInspector.cleanShowingOriginal");
+            }
+
+            if root.selected.audio-loading && !root.running: Note {
+                text: I18n.t("clipInspector.audioTrackLoading");
+            }
+
+            Row {
+                label: I18n.t("clipInspector.cleanPreset");
+                Select {
+                    options: root.preset-options;
+                    current: root.preset-index(root.selected.clean-audio-preset);
+                    enabled: !root.running;
+                    changed(index) => {
+                        let p = index == 0 ? "podcast"
+                            : index == 1 ? "crisp"
+                            : index == 2 ? "noise-only"
+                            : index == 3 ? "vocal-only"
+                            : "custom";
+                        root.clean-audio-preset(p);
+                    }
+                }
+            }
+
+            SwitchRow {
+                label: I18n.t("clipInspector.cleanRemoveNoise");
+                checked: root.selected.clean-audio-remove-noise;
+                toggled(on) => {
+                    if (!root.running) {
+                        root.clean-audio-toggles(on, root.selected.clean-audio-isolate-vocals);
+                    }
+                }
+            }
+
+            if root.selected.clean-audio-remove-noise: VerticalLayout {
+                spacing: 4px;
+                Param {
+                    label: I18n.t("clipInspector.cleanNoiseAttenuation");
+                    value: root.selected.clean-audio-noise-attenuation;
+                    minimum: 10;
+                    maximum: 100;
+                    step: 1;
+                    unit: "dB";
+                    rail: true;
+                    changed(v) => { root.clean-audio-param("noise_attenuation", v); }
+                }
+                Param {
+                    label: I18n.t("clipInspector.cleanPostFilterBeta");
+                    value: root.selected.clean-audio-post-filter-beta;
+                    minimum: 0.00;
+                    maximum: 0.08;
+                    step: 0.005;
+                    rail: true;
+                    changed(v) => { root.clean-audio-param("post_filter_beta", v); }
+                }
+            }
+
+            SwitchRow {
+                label: I18n.t("clipInspector.cleanIsolateVocals");
+                checked: root.selected.clean-audio-isolate-vocals;
+                toggled(on) => {
+                    if (!root.running) {
+                        root.clean-audio-toggles(root.selected.clean-audio-remove-noise, on);
+                    }
+                }
+            }
+
+            if root.selected.clean-audio-isolate-vocals: VerticalLayout {
+                spacing: 4px;
+                Param {
+                    label: I18n.t("clipInspector.cleanVocalStrength");
+                    value: root.selected.clean-audio-vocal-strength;
+                    minimum: 0;
+                    maximum: 100;
+                    step: 1;
+                    unit: "%";
+                    rail: true;
+                    changed(v) => { root.clean-audio-param("vocal_strength", v); }
+                }
+                Param {
+                    label: I18n.t("clipInspector.cleanVocalClarity");
+                    value: root.selected.clean-audio-vocal-clarity;
+                    minimum: 0;
+                    maximum: 100;
+                    step: 1;
+                    unit: "%";
+                    rail: true;
+                    changed(v) => { root.clean-audio-param("vocal_clarity", v); }
+                }
+                Param {
+                    label: I18n.t("clipInspector.cleanVocalDereverb");
+                    value: root.selected.clean-audio-vocal-dereverb;
+                    minimum: 0;
+                    maximum: 100;
+                    step: 1;
+                    unit: "%";
+                    rail: true;
+                    changed(v) => { root.clean-audio-param("vocal_dereverb", v); }
+                }
+            }
+
+            Row {
+                Rectangle { horizontal-stretch: 1; }
+                Button {
+                    primary: !root.running;
+                    danger: root.running;
+                    label: root.running ? I18n.t("clipInspector.cleanTerminate")
+                        : (root.selected.clean-audio-linked ? I18n.t("clipInspector.cleanAgain") : I18n.t("clipInspector.cleanRun"));
+                    enabled: root.running || (!root.selected.clean-audio-busy && (root.selected.clean-audio-remove-noise || root.selected.clean-audio-isolate-vocals));
+                    clicked => { root.clean-audio-run(); }
                 }
             }
         }

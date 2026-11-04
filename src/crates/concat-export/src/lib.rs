@@ -87,6 +87,12 @@ impl ClipKind {
 pub struct ExportClip {
     /// The media file this clip shows or plays.
     pub path: String,
+    /// A separate audio file to play instead of `path`, e.g. cleaned audio.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio_path: Option<String>,
+    /// Offset for `audio_path` if it starts partway into the original.
+    #[serde(default)]
+    pub audio_source_offset: f64,
     /// Which of the file's audio streams the clip plays, by stream index;
     /// absent is the first in file order. See the document's
     /// `Clip::audio_stream`.
@@ -320,6 +326,8 @@ impl ExportClip {
     pub fn blank(kind: ClipKind, start: f64, duration: f64, track: usize) -> ExportClip {
         ExportClip {
             path: String::new(),
+            audio_path: None,
+            audio_source_offset: 0.0,
             audio_stream: None,
             color_range: None,
             kind,
@@ -1434,13 +1442,26 @@ pub fn audio_buses(clips: &[ExportClip]) -> Vec<audio::AudioBus> {
 pub fn audio_pieces(clip: &ExportClip) -> Vec<AudioClip> {
     let chain = clip.filter_chain.clone();
     let track = volume_track(clip);
+    let (audio_path, audio_stream, base_source_start) = if let Some(audio_path) = &clip.audio_path {
+        (
+            PathBuf::from(audio_path),
+            None,
+            (clip.source_start - clip.audio_source_offset).max(0.0),
+        )
+    } else {
+        (
+            PathBuf::from(&clip.path),
+            clip.audio_stream.map(|index| index as usize),
+            clip.source_start,
+        )
+    };
     let Some(curve) = clip.retime() else {
         return vec![AudioClip {
-            path: PathBuf::from(&clip.path),
-            stream: clip.audio_stream.map(|index| index as usize),
+            path: audio_path,
+            stream: audio_stream,
             start: clip.start,
             duration: clip.duration,
-            source_start: clip.source_start,
+            source_start: base_source_start,
             speed: audio::clamp_speed(clip.speed),
             preserve_pitch: clip.preserve_pitch,
             volume: clip.volume,
@@ -1459,7 +1480,7 @@ pub fn audio_pieces(clip: &ExportClip) -> Vec<AudioClip> {
         .map(|(x0, x1, consumed, mean)| {
             let piece_duration = (x1 - x0) * clip.duration;
             let forward = consumed * clip.duration;
-            let source_start = clip.source_start + forward;
+            let source_start = base_source_start + forward;
             let piece_start = clip.start + x0 * clip.duration;
             let piece_end = piece_start + piece_duration;
             // The clip's fades, as they fall on this piece.
@@ -1467,8 +1488,8 @@ pub fn audio_pieces(clip: &ExportClip) -> Vec<AudioClip> {
             let fade_out_from = clip.start + clip.duration - clip.fade_out;
             let fade_out = (piece_end - fade_out_from.max(piece_start)).clamp(0.0, piece_duration);
             AudioClip {
-                path: PathBuf::from(&clip.path),
-                stream: clip.audio_stream.map(|index| index as usize),
+                path: audio_path.clone(),
+                stream: audio_stream,
                 start: piece_start,
                 duration: piece_duration,
                 source_start,

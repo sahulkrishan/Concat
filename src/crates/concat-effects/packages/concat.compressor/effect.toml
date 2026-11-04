@@ -1,0 +1,21 @@
+[effect]
+id = "concat.compressor"
+name = "Compressor"
+kind = "audio"
+category = "Dynamics"
+order = 44
+intensity = "amount"
+aliases = ["compressor"]
+description = "Levels dynamic range, lifting quiet details and taming volume peaks."
+
+[[param]]
+key = "amount"
+label = "Amount"
+min = 0
+max = 100
+default = 50
+step = 1
+unit = "%"
+
+[ffmpeg]
+chain = "acompressor=threshold={fixed(0.5 - amount / 100 * 0.3, 2)}:ratio={fixed(2 + amount / 100 * 3, 1)}:attack=15:release=120,alimiter=limit=0.95"

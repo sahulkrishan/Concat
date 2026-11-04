@@ -132,6 +132,10 @@ export struct ClipData {
     /// The frames a picture clip tiles along its body; `frames` is 0 when
     /// there are none yet.
     strip: StripData,
+    /// Clean audio processing progress (0.0..1.0), or -1 if not running
+    clean-audio-progress: float,
+    /// Whether this clip's audio stream / waveform is currently decoding or loading
+    audio-loading: bool,
 }
 
 
@@ -466,6 +470,21 @@ export struct SelectedClipData {
     enhance-before: image,
     enhance-after: image,
     enhance-estimate: string,
+    // Clean Audio: background removal and vocal isolation
+    clean-audio-progress: float,
+    clean-audio-stage: string,
+    clean-audio-linked: bool,
+    clean-audio-on: bool,
+    clean-audio-busy: bool,
+    clean-audio-preset: string,
+    clean-audio-remove-noise: bool,
+    clean-audio-isolate-vocals: bool,
+    clean-audio-noise-attenuation: float,
+    clean-audio-post-filter-beta: float,
+    clean-audio-vocal-strength: float,
+    clean-audio-vocal-clarity: float,
+    clean-audio-vocal-dereverb: float,
+    audio-loading: bool,
     /// Reverse writing this clip's backwards copy: -1 when it is not,
     /// else how far along
     reverse-progress: float,

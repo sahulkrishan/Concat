@@ -248,6 +248,10 @@ export global Editor {
     in-out property <[EffectData]> audio-effects;
     in-out property <float> level;
     in-out property <float> peak;
+    /// True while clean audio or audio filters are being processed/decoded in background.
+    in-out property <bool> audio-processing: false;
+    /// True while an audio track / waveform is decoding or loading.
+    in-out property <bool> audio-loading: false;
     callback add-effect(audio: bool);
     callback remove-effect(id: int);
 
@@ -324,6 +328,12 @@ export global Editor {
     callback clip-enhance-strength(strength: float);
     callback clip-enhance-preview();
     callback clip-enhance-run();
+    /// Audio clean-up: background noise removal and vocal isolation
+    callback clip-clean-audio-run();
+    callback clip-clean-audio-set(on: bool);
+    callback clip-clean-audio-preset(preset: string);
+    callback clip-clean-audio-toggles(noise: bool, vocal: bool);
+    callback clip-clean-audio-param(key: string, value: float);
     /// The transition riding into the selected clip; see VideoPanel.
     callback transition-remove();
     callback transition-duration-set(seconds: float);

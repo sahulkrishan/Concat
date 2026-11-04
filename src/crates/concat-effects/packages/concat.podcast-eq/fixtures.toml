@@ -1,0 +1,13 @@
+[[case]]
+name = "default"
+chain = "highpass=f=80,equalizer=f=300:t=q:w=1.2:g=-2.5,equalizer=f=120:t=q:w=1.0:g=2.0,equalizer=f=3500:t=q:w=1.0:g=4.0,treble=g=2.4:f=8000:w=0.8,alimiter=limit=0.95"
+
+[[case]]
+name = "minimum"
+at = "min"
+chain = "highpass=f=80,equalizer=f=300:t=q:w=1.2:g=-2.5,equalizer=f=120:t=q:w=1.0:g=-6.0,equalizer=f=3500:t=q:w=1.0:g=0.0,treble=g=0.0:f=8000:w=0.8,alimiter=limit=0.95"
+
+[[case]]
+name = "maximum"
+at = "max"
+chain = "highpass=f=80,equalizer=f=300:t=q:w=1.2:g=-2.5,equalizer=f=120:t=q:w=1.0:g=6.0,equalizer=f=3500:t=q:w=1.0:g=12.0,treble=g=7.2:f=8000:w=0.8,alimiter=limit=0.95"

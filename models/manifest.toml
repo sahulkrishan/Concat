@@ -262,3 +262,26 @@ bytes = 487601967
 sha256 = "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b"
 licence = "MIT"
 upstream = "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-small.bin"
+
+# ── Clean Audio ───────────────────────────────────────────────────────────
+# src/crates/concat-host/src/clean_audio.rs. DeepFilterNet3 for background
+# noise removal, and ClearerVoice MossFormer2 for vocal isolation.
+
+[[model]]
+id = "DeepFilterNet3_onnx.tar.gz"
+family = "clean_audio"
+file = "DeepFilterNet3_onnx.tar.gz"
+bytes = 7983136
+sha256 = "c94d91f70911001c946e0fabb4aa9adc37045f45a03b56008cb0c8244cb63616"
+licence = "MIT"
+upstream = "https://raw.githubusercontent.com/Rikorose/DeepFilterNet/main/models/DeepFilterNet3_onnx.tar.gz"
+
+[[model]]
+id = "mossformer2_se_48k_int8.onnx"
+family = "clean_audio"
+file = "mossformer2_se_48k_int8.onnx"
+bytes = 94268636
+sha256 = "2f98c2b3d16cd30f9367181a4328a813a5455121267138836f25218467957b54"
+licence = "Apache-2.0"
+upstream = "https://huggingface.co/ipsilondev/MossFormer2-SE-48K-ONNX/resolve/40dd49e2d52152d08e5a09a63a5d9465e6bf6329/model.onnx"
+
