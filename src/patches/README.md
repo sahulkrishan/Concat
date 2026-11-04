@@ -86,3 +86,16 @@ existing shared-library build and CPU backend selection are unchanged.
 Apart from the changes documented here, the copy matches the published
 crate. When refreshing it, check whether the new whisper.cpp already
 includes this fix before reapplying it.
+
+## deep-filter-rt 0.1.1
+
+Real-time noise suppression with DeepFilterNet3. The published crate declared
+`rust-version = "1.96"`, which caused Cargo to fail on the workspace's pinned
+toolchain (Rust 1.93.1).
+
+The crate code is pure Rust and tract-based with no dependencies on Rust 1.94+
+features. One change:
+
+- `Cargo.toml`: `rust-version = "1.93"` so Cargo builds the crate cleanly under
+  the pinned 1.93.1 compiler.
+

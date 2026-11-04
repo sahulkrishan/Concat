@@ -1,0 +1,44 @@
+[package]
+name = "deep-filter-rt"
+version = "0.1.1"
+edition.workspace = true
+rust-version.workspace = true
+description = "Real-time noise suppression with DeepFilterNet3: the inference part of DeepFilterNet's deep_filter, maintained and with the model embedded"
+authors = ["Hendrik Schröter", "Thomas Heck <t@b128.net>"]
+license.workspace = true
+categories = ["multimedia::audio", "science"]
+keywords = ["audio", "noise-suppression", "deepfilternet", "denoising", "speech"]
+include = [
+    "/src/**/*",
+    "/tests/**/*",
+    "/models/**/*",
+    "/README.md",
+    "/CHANGELOG.md",
+    "/NOTICE.md",
+    "/LICENSE",
+    "/LICENSE-APACHE",
+    "/LICENSE-MIT",
+]
+
+# rust-ini's library is named `ini`, cargo-machete takes it for unused
+[package.metadata.cargo-machete]
+ignored = ["rust-ini"]
+
+[features]
+# logs the processing time per frame
+timings = []
+
+[dependencies]
+anyhow = "1"
+itertools = "0.15"
+log = "0.4"
+ndarray = "0.17"
+num-complex = "0.4"
+realfft = "3.1"
+rust-ini = "0.21"
+tract-core = "0.23.9"
+tract-onnx = "0.23.9"
+tract-pulse = "0.23.9"
+
+[dev-dependencies]
+ndarray = "0.17"

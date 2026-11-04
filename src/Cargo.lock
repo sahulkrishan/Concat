@@ -1892,8 +1892,6 @@ checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
 [[package]]
 name = "deep-filter-rt"
 version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b73dcaef1aa6a190df5256673463cd35b965c87b4387d70a2d65055e72718fd7"
 dependencies = [
  "anyhow",
  "itertools 0.15.0",

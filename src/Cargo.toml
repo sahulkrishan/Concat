@@ -152,3 +152,7 @@ i-slint-renderer-skia = { path = "patches/i-slint-renderer-skia" }
 # (see patches/README.md, and GGML_BACKEND_DL in build-app.yml). 0.15.0
 # exactly; bump it with whisper-rs, re-applying the change.
 whisper-rs-sys = { path = "patches/whisper-rs-sys" }
+# DeepFilterNet3 neural inference runtime, as published, with rust-version
+# set to 1.93 to match the workspace's pinned toolchain (the code builds on
+# 1.93 without change; see patches/README.md). 0.1.1 exactly.
+deep-filter-rt = { path = "patches/deep-filter-rt" }
