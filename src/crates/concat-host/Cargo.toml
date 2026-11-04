@@ -12,6 +12,8 @@ description = "What the editor window needs that is not the edit itself: session
 gpu = ["concat-export/gpu", "concat-render/gpu"]
 
 [dependencies]
+deep-filter-rt = "0.1.1"
+ndarray = "0.17"
 concat-core.workspace = true
 concat-media.workspace = true
 concat-project.workspace = true

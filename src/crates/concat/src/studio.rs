@@ -8427,37 +8427,11 @@ impl Studio {
             }
         };
 
-        let mut commands = Vec::new();
-        commands.push(Command::LinkClipCleanAudio {
+        let command = Command::LinkClipCleanAudio {
             clip_id: clip_id.to_string(),
             copy_media_id,
             preset: clean_result.preset.clone(),
             offset: clean_result.offset,
-        });
-
-        // Attach downstream preset filters (EQ, Compressor, etc.) if not already present
-        let mut chain = clip.filters.clone();
-        let mut changed_filters = false;
-        for pf in &clean_result.applied_filters {
-            if !chain.iter().any(|existing| existing.id == pf.id) {
-                chain.push(pf.clone());
-                changed_filters = true;
-            }
-        }
-        if changed_filters {
-            commands.push(Command::UpdateClip {
-                clip_id: clip_id.to_string(),
-                patch: ClipPatch {
-                    filters: Some(chain),
-                    ..ClipPatch::default()
-                },
-            });
-        }
-
-        let command = match commands.len() {
-            0 => return,
-            1 => commands.remove(0),
-            _ => Command::Batch { commands },
         };
         self.apply(command);
         self.request_preview();

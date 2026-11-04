@@ -9,7 +9,6 @@
 //! MossFormer2 for vocal isolation), and written to a cached PCM WAV file in the
 //! project's cache folder.
 
-use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -256,41 +255,11 @@ pub fn target_for(
 }
 
 /// Returns the live DSP filter chain associated with a clean-up preset.
-pub fn preset_filters(preset: &str) -> Vec<AppliedFilter> {
-    let filter = |id: &str, params: &[(&str, f64)]| AppliedFilter {
-        id: id.to_owned(),
-        params: params.iter().map(|(k, v)| ((*k).to_owned(), *v)).collect(),
-        enabled: true,
-        keys: BTreeMap::new(),
-    };
-
-    match preset {
-        "podcast" => vec![
-            filter("concat.podcast-eq", &[("clarity", 4.5), ("warmth", 2.0)]),
-            filter("concat.deesser", &[("amount", 45.0)]),
-            filter("concat.compressor", &[("amount", 50.0)]),
-            filter("concat.loudness", &[("target", -16.0)]),
-        ],
-        "crisp" => vec![
-            filter("concat.podcast-eq", &[("clarity", 7.0), ("warmth", 0.0)]),
-            filter("concat.deesser", &[("amount", 55.0)]),
-            filter("concat.compressor", &[("amount", 40.0)]),
-            filter("concat.loudness", &[("target", -16.0)]),
-        ],
-        "denoise_only" => vec![
-            filter("concat.loudness", &[("target", -23.0)]),
-        ],
-        "isolate_only" => vec![
-            filter("concat.deesser", &[("amount", 30.0)]),
-            filter("concat.loudness", &[("target", -23.0)]),
-        ],
-        _ => vec![
-            filter("concat.podcast-eq", &[("clarity", 4.0), ("warmth", 1.5)]),
-            filter("concat.deesser", &[("amount", 40.0)]),
-            filter("concat.compressor", &[("amount", 45.0)]),
-            filter("concat.loudness", &[("target", -18.0)]),
-        ],
-    }
+///
+/// Clean Up Audio operates in a self-contained pipeline on the rendered audio file,
+/// so no surprise filters are injected into the clip's independent Treatments stack.
+pub fn preset_filters(_preset: &str) -> Vec<AppliedFilter> {
+    Vec::new()
 }
 
 /// The Audio Clean-Up manager.
@@ -504,16 +473,7 @@ impl CleanAudioEngine {
 
         let sample_rate = 48000;
         let channels = 2; // stereo
-        let mut decode_filters = Vec::new();
-        if request.remove_noise {
-            let nr = request.noise_attenuation_db.clamp(1.0, 97.0);
-            decode_filters.push("highpass=f=70".to_string());
-            decode_filters.push(format!("afftdn=nr={nr:.1}:nf=-50:tn=1:ad=0.5"));
-        }
-        if request.isolate_vocals {
-            let boost = (request.vocal_clarity.clamp(0.0, 1.0) * 4.0).max(0.5);
-            decode_filters.push(format!("equalizer=f=2800:t=q:w=1.2:g={boost:.1}"));
-        }
+        let decode_filters = Vec::new(); // pure raw PCM decode, no destructive afftdn filters
 
         let options = AudioOptions {
             format: SampleFormat::F32,
@@ -528,12 +488,25 @@ impl CleanAudioEngine {
         let mut decoder = AudioDecoder::open(&request.media_path, &options)
             .map_err(|e| format!("could not open audio stream: {e}"))?;
 
+        // Estimate total samples so decode progress reports smoothly rather than staying at 0%
+        let expected_duration = request
+            .span
+            .map(|(_, d)| d)
+            .or_else(|| concat_media::probe(&request.media_path).ok().and_then(|s| s.duration.map(|d| d.as_f64())))
+            .unwrap_or(10.0);
+        let expected_samples = (expected_duration * sample_rate as f64 * channels as f64).max(sample_rate as f64) as usize;
+
         let mut pcm: Vec<f32> = Vec::new();
         while let Some(chunk) = decoder.next_f32().map_err(|e| format!("decode error: {e}"))? {
             if cancel.load(Ordering::Relaxed) {
                 return Err("cancelled".into());
             }
             pcm.extend_from_slice(&chunk);
+            let decode_progress = (pcm.len() as f32 / expected_samples as f32).min(0.99);
+            progress(CleanProgress {
+                stage: CleanStage::Decoding,
+                progress: decode_progress,
+            });
         }
 
         progress(CleanProgress {
@@ -545,106 +518,105 @@ impl CleanAudioEngine {
             return Err("cancelled".into());
         }
 
-        // 3. Process audio (Noise removal / Vocal isolation)
+        // 3. Process audio (Neural Noise Removal via DeepFilterNet3 & Vocal Isolation)
         progress(CleanProgress {
             stage: CleanStage::Processing,
             progress: 0.0,
         });
 
+        let hop_size = 480; // 10ms frame at 48kHz
         let mut processed = pcm;
-        let total_frames = processed.len() / (channels as usize);
-        let frame_size = 480; // 10ms at 48kHz
-        let mut offset = 0;
+        let total_samples = processed.len();
 
-        let atten_lim = if request.remove_noise {
-            10.0f32.powf(-request.noise_attenuation_db.clamp(6.0, 100.0) / 20.0)
-        } else {
-            1.0
-        };
-        let post_beta = request.post_filter_beta.clamp(0.0, 0.10);
-        let vocal_strength = request.vocal_isolation_strength.clamp(0.0, 1.0);
-        let vocal_dereverb = request.vocal_dereverb.clamp(0.0, 1.0);
-
-        let mut running_noise_floor = 0.015f32;
-        let mut prev_energy = 0.0f32;
-        let mut smooth_gain = 1.0f32;
-
-        while offset < processed.len() {
-            if cancel.load(Ordering::Relaxed) {
-                return Err("cancelled".into());
-            }
-
-            let end = (offset + frame_size * (channels as usize)).min(processed.len());
-            let slice = &mut processed[offset..end];
-
-            // 1. Calculate frame RMS energy
-            let mut sum_sq = 0.0f32;
-            for s in slice.iter() {
-                sum_sq += s * s;
-            }
-            let rms = (sum_sq / slice.len().max(1) as f32).sqrt();
-
-            // Track noise floor adaptively
-            if rms < running_noise_floor * 1.5 {
-                running_noise_floor = running_noise_floor * 0.95 + rms * 0.05;
+        if (request.remove_noise || request.isolate_vocals) && total_samples >= hop_size * (channels as usize) {
+            let atten_db = if request.remove_noise {
+                request.noise_attenuation_db.clamp(6.0, 100.0)
             } else {
-                running_noise_floor = running_noise_floor * 0.999 + rms * 0.001;
+                (request.vocal_isolation_strength.clamp(0.0, 1.0) * 60.0).max(25.0)
+            };
+
+            let post_beta = if request.remove_noise {
+                request.post_filter_beta.clamp(0.0, 0.08)
+            } else {
+                (request.vocal_dereverb.clamp(0.0, 1.0) * 0.04).clamp(0.0, 0.04)
+            };
+
+            let mut rp = deep_filter_rt::tract::RuntimeParams::default_with_ch(1);
+            rp = rp.with_atten_lim(atten_db);
+            if post_beta > 0.0 {
+                rp = rp.with_post_filter(post_beta);
             }
-            running_noise_floor = running_noise_floor.clamp(0.0001, 0.1);
 
-            let snr = rms / running_noise_floor.max(1e-5);
-            let speech_prob = (snr - 1.0).clamp(0.0, 10.0) / 10.0;
+            let mut df_left = deep_filter_rt::tract::DfTract::new(
+                deep_filter_rt::tract::DfParams::default(),
+                &rp,
+            ).map_err(|e| format!("failed to initialize DeepFilterNet3 engine: {e}"))?;
 
-            // Target gain for this frame
-            let mut target_gain = 1.0f32;
+            let mut df_right = if channels > 1 {
+                Some(deep_filter_rt::tract::DfTract::new(
+                    deep_filter_rt::tract::DfParams::default(),
+                    &rp,
+                ).map_err(|e| format!("failed to initialize DeepFilterNet3 engine for stereo: {e}"))?)
+            } else {
+                None
+            };
 
-            if request.remove_noise {
-                // DeepFilterNet3 spectral over-attenuation & limit formula
-                let base_gain = if snr > 2.0 {
-                    1.0
+            let step = channels as usize * hop_size;
+            let num_frames = total_samples / step;
+            let mut left_in = ndarray::Array2::<f32>::zeros((1, hop_size));
+            let mut left_out = ndarray::Array2::<f32>::zeros((1, hop_size));
+            let mut right_in = ndarray::Array2::<f32>::zeros((1, hop_size));
+            let mut right_out = ndarray::Array2::<f32>::zeros((1, hop_size));
+
+            let mut frame_idx = 0;
+
+            for chunk in processed.chunks_exact_mut(step) {
+                if cancel.load(Ordering::Relaxed) {
+                    return Err("cancelled".into());
+                }
+
+                if channels == 1 {
+                    for i in 0..hop_size {
+                        left_in[[0, i]] = chunk[i];
+                    }
+                    let _ = df_left.process(left_in.view(), left_out.view_mut());
+                    for i in 0..hop_size {
+                        chunk[i] = left_out[[0, i]];
+                    }
                 } else {
-                    let suppression = (snr / 2.0).powf(1.0 + post_beta * 20.0);
-                    suppression.clamp(atten_lim, 1.0)
-                };
-                target_gain = target_gain.min(base_gain);
-            }
-
-            if request.isolate_vocals {
-                // MossFormer2 vocal isolation: gate non-speech background
-                if speech_prob < 0.25 {
-                    let bg_attenuation = 1.0 - (vocal_strength * 0.85);
-                    target_gain *= bg_attenuation.clamp(0.05, 1.0);
+                    for i in 0..hop_size {
+                        left_in[[0, i]] = chunk[i * 2];
+                        right_in[[0, i]] = chunk[i * 2 + 1];
+                    }
+                    let _ = df_left.process(left_in.view(), left_out.view_mut());
+                    if let Some(ref mut dfr) = df_right {
+                        let _ = dfr.process(right_in.view(), right_out.view_mut());
+                    }
+                    for i in 0..hop_size {
+                        chunk[i * 2] = left_out[[0, i]];
+                        chunk[i * 2 + 1] = right_out[[0, i]];
+                    }
                 }
 
-                // Dereverberation: attenuate lingering decay tails
-                if rms < prev_energy * 0.85 && speech_prob < 0.5 {
-                    let tail_atten = 1.0 - (vocal_dereverb * 0.5);
-                    target_gain *= tail_atten.clamp(0.1, 1.0);
-                }
-            }
-
-            prev_energy = rms;
-
-            // Smooth gain transition to avoid zipper noise / clicks
-            smooth_gain = smooth_gain * 0.7 + target_gain * 0.3;
-
-            // Apply gain and soft-clamp
-            for sample in slice.iter_mut() {
-                *sample *= smooth_gain;
-                if *sample > 0.99 {
-                    *sample = 0.99;
-                } else if *sample < -0.99 {
-                    *sample = -0.99;
+                frame_idx += 1;
+                if frame_idx % 4 == 0 || frame_idx == num_frames {
+                    progress(CleanProgress {
+                        stage: CleanStage::Processing,
+                        progress: (frame_idx as f32 / num_frames.max(1) as f32).clamp(0.0, 1.0),
+                    });
                 }
             }
 
-            offset = end;
-            let current_frame = offset / (channels as usize);
-            progress(CleanProgress {
-                stage: CleanStage::Processing,
-                progress: (current_frame as f32 / total_frames.max(1) as f32).clamp(0.0, 1.0),
-            });
+            // Smooth vocal presence shaping when vocal isolation is enabled (without gating artifacts)
+            if request.isolate_vocals && request.vocal_clarity > 0.05 {
+                apply_vocal_presence(&mut processed, sample_rate, channels, request.vocal_clarity);
+            }
         }
+
+        progress(CleanProgress {
+            stage: CleanStage::Processing,
+            progress: 1.0,
+        });
 
         if cancel.load(Ordering::Relaxed) {
             return Err("cancelled".into());
@@ -673,6 +645,53 @@ impl CleanAudioEngine {
             preset: request.preset,
             applied_filters,
         })
+    }
+}
+
+/// Applies a smooth, continuous biquad peaking equalizer for vocal clarity and dialogue presence
+/// without time-domain noise-gating artifacts.
+fn apply_vocal_presence(samples: &mut [f32], sample_rate: u32, channels: u16, clarity: f32) {
+    let f0 = 2800.0f64;
+    let fs = sample_rate as f64;
+    let gain_db = (clarity.clamp(0.0, 1.0) * 5.0) as f64;
+    if gain_db <= 0.1 {
+        return;
+    }
+    let q = 1.0f64;
+    let w0 = 2.0 * std::f64::consts::PI * f0 / fs;
+    let alpha = w0.sin() / (2.0 * q);
+    let a = 10.0f64.powf(gain_db / 40.0);
+
+    let b0 = 1.0 + alpha * a;
+    let b1 = -2.0 * w0.cos();
+    let b2 = 1.0 - alpha * a;
+    let a0 = 1.0 + alpha / a;
+    let a1 = -2.0 * w0.cos();
+    let a2 = 1.0 - alpha / a;
+
+    let b0 = (b0 / a0) as f32;
+    let b1 = (b1 / a0) as f32;
+    let b2 = (b2 / a0) as f32;
+    let a1 = (a1 / a0) as f32;
+    let a2 = (a2 / a0) as f32;
+
+    let ch = channels as usize;
+    for c in 0..ch {
+        let mut x1 = 0.0f32;
+        let mut x2 = 0.0f32;
+        let mut y1 = 0.0f32;
+        let mut y2 = 0.0f32;
+        let mut idx = c;
+        while idx < samples.len() {
+            let x0 = samples[idx];
+            let y0 = b0 * x0 + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+            x2 = x1;
+            x1 = x0;
+            y2 = y1;
+            y1 = y0;
+            samples[idx] = y0.clamp(-0.99, 0.99);
+            idx += ch;
+        }
     }
 }
 
@@ -748,13 +767,9 @@ mod tests {
     #[test]
     fn preset_filters_generate_dsp_chains() {
         let podcast = preset_filters("podcast");
-        assert!(podcast.iter().any(|f| f.id == "concat.podcast-eq"));
-        assert!(podcast.iter().any(|f| f.id == "concat.deesser"));
-        assert!(podcast.iter().any(|f| f.id == "concat.compressor"));
-        assert!(podcast.iter().any(|f| f.id == "concat.loudness"));
-
+        assert!(podcast.is_empty(), "clean audio should not inject external filters into clip treatments");
         let crisp = preset_filters("crisp");
-        assert!(crisp.iter().any(|f| f.id == "concat.podcast-eq"));
+        assert!(crisp.is_empty());
     }
 
     #[test]
